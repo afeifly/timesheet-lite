@@ -1,0 +1,14 @@
+:80 {
+    # Serve static files from the frontend build directory
+    root * ./frontend/dist
+    file_server
+
+    # Proxy API requests to the backend
+    # Strips the /api prefix before forwarding to the backend
+    handle_path /api/* {
+        reverse_proxy localhost:8003
+    }
+
+    # Fallback to index.html for SPA routing (Vue Router)
+    try_files {path} /index.html
+}

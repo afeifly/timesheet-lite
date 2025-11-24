@@ -9,8 +9,7 @@ from sqlmodel import Session, select
 app = FastAPI(title="Timesheet System")
 
 origins = [
-    "http://localhost:5173",
-    "http://localhost:3000",
+    "*",
 ]
 
 app.add_middleware(
