@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-    baseURL: 'http://localhost:8003', // Using port 8003 as verified
+    baseURL: '/api',
     headers: {
         'Content-Type': 'application/json'
     }
