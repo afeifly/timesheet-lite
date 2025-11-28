@@ -43,7 +43,12 @@ const router = createRouter({
             component: () => import('../views/EmailSettings.vue'),
             meta: { requiresAuth: true, requiresAdmin: true }
         },
-
+        {
+            path: '/team-timesheets',
+            name: 'team-timesheets',
+            component: () => import('../views/TeamTimesheets.vue'),
+            meta: { requiresAuth: true, requiresTeamLeader: true }
+        },
         {
             path: '/log-work',
             name: 'log-work',
@@ -67,6 +72,8 @@ router.beforeEach((to, from, next) => {
     if (to.meta.requiresAuth && !authStore.isAuthenticated) {
         next('/login')
     } else if (to.meta.requiresAdmin && !authStore.isAdmin) {
+        next('/')
+    } else if (to.meta.requiresTeamLeader && authStore.user.role !== 'team_leader') {
         next('/')
     } else {
         next()

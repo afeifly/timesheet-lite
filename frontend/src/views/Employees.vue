@@ -7,11 +7,11 @@
 
     <el-table :data="users" style="width: 100%">
       <el-table-column prop="id" label="ID" width="60" />
-      <el-table-column prop="username" label="Username (Login)" width="120" />
-      <el-table-column prop="email" label="Email" width="180" />
-      <el-table-column prop="full_name" label="Full Name" width="150" />
+      <el-table-column prop="username" label="Username (Login)" min-width="120" />
+      <el-table-column prop="email" label="Email" min-width="180" />
+      <el-table-column prop="full_name" label="Full Name" min-width="150" />
       <el-table-column prop="cost_center" label="Cost Center" width="120" />
-      <el-table-column prop="remark" label="Mark" width="120" />
+      <el-table-column prop="remark" label="Mark" min-width="120" />
       <el-table-column prop="start_date" label="Start Date" width="110" />
       <el-table-column prop="end_date" label="End Date" width="110" />
       <el-table-column prop="role" label="Role" width="100">
@@ -77,6 +77,16 @@
             <el-option label="Admin" value="admin" />
           </el-select>
         </el-form-item>
+        <el-form-item label="Team Leader" v-if="form.role === 'employee'">
+          <el-select v-model="form.team_leader_id" placeholder="Select Team Leader" clearable>
+            <el-option 
+              v-for="tl in teamLeaders" 
+              :key="tl.id" 
+              :label="tl.username" 
+              :value="tl.id" 
+            />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <span class="dialog-footer">
@@ -119,6 +129,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 const authStore = useAuthStore()
 const isAdmin = computed(() => authStore.user?.role === 'admin')
 const users = ref([])
+const teamLeaders = computed(() => users.value.filter(u => u.role === 'team_leader'))
 const allProjects = ref([])
 const showCreateDialog = ref(false)
 const showProjectDialog = ref(false)
@@ -134,8 +145,11 @@ const form = ref({
   remark: '',
   start_date: null,
   end_date: null,
+  start_date: null,
+  end_date: null,
   password: '',
-  role: 'employee'
+  role: 'employee',
+  team_leader_id: null
 })
 
 const fetchUsers = async () => {
@@ -167,7 +181,10 @@ const openCreateDialog = () => {
     start_date: null,
     end_date: null,
     password: '',
-    role: 'employee'
+    end_date: null,
+    password: '',
+    role: 'employee',
+    team_leader_id: null
   }
   showCreateDialog.value = true
 }
@@ -193,7 +210,11 @@ const submitUser = async () => {
         start_date: form.value.start_date,
         end_date: form.value.end_date,
         password_hash: form.value.password,
-        role: form.value.role
+        start_date: form.value.start_date,
+        end_date: form.value.end_date,
+        password_hash: form.value.password,
+        role: form.value.role,
+        team_leader_id: form.value.team_leader_id
       }
       await api.post('/users/', userData)
       ElMessage.success('User created')

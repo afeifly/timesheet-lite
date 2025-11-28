@@ -38,10 +38,14 @@ class User(SQLModel, table=True):
     password_hash: str
     role: Role = Field(default=Role.EMPLOYEE)
     is_deleted: bool = Field(default=False)
+    team_leader_id: Optional[int] = Field(default=None, foreign_key="user.id")
     
     timesheets: List["Timesheet"] = Relationship(back_populates="user")
     activity_logs: List["ActivityLog"] = Relationship(back_populates="user")
     projects: List["Project"] = Relationship(back_populates="users", link_model=UserProjectLink)
+    
+    team_leader: Optional["User"] = Relationship(back_populates="employees", sa_relationship_kwargs={"remote_side": "User.id"})
+    employees: List["User"] = Relationship(back_populates="team_leader")
 
 class Project(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

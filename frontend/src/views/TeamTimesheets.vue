@@ -1,17 +1,27 @@
 <template>
-  <div class="log-work">
+  <div class="team-timesheets">
     <el-container>
+      <el-aside width="250px">
+        <el-menu :default-active="selectedEmployeeId?.toString()" @select="handleEmployeeSelect">
+          <el-menu-item v-for="emp in employees" :key="emp.id" :index="emp.id.toString()">
+            {{ emp.username }} ({{ emp.full_name || 'No Name' }})
+          </el-menu-item>
+        </el-menu>
+      </el-aside>
+      
       <el-main>
-        <div v-if="authStore.isAdmin" class="admin-warning">
-          <el-alert title="Admins cannot log work" type="warning" :closable="false" show-icon />
+        <div v-if="!selectedEmployeeId" class="empty-state">
+          Select an employee to view their timesheet
         </div>
+        
         <el-card v-else class="timesheet-card">
           <div class="timesheet-header">
-            <h3>Log Work (Mon - Fri)</h3>
+            <h3>{{ selectedEmployee?.username }}'s Timesheet</h3>
             <div class="week-navigation">
               <el-button @click="changeWeek(-1)">Previous Week</el-button>
               <span class="week-range">{{ weekRange }}</span>
               <el-button @click="changeWeek(1)" :disabled="isCurrentWeek">Next Week</el-button>
+              <el-button type="primary" @click="openProjectDialog" style="margin-left: 20px;">Assign Projects</el-button>
             </div>
           </div>
 
@@ -21,27 +31,31 @@
             <div class="days-header">
               <div v-for="(day, index) in weekDays" :key="index" class="day-header-item">
                 <div>{{ day.label }}</div>
-                <div :class="['header-total', { 'warning': getDailyTotal(index) !== 8 }]">
+                <div :class="['header-total', { 'warning': getDailyTotal(index) > 8 }]">
                   {{ getDailyTotal(index) }}h
                 </div>
-                <el-tag v-if="isDayVerified(index)" type="success" size="small" class="verify-badge">Verified</el-tag>
+                <el-button 
+                  v-if="!isDayVerified(index) && getDailyTotal(index) > 0" 
+                  type="success" 
+                  size="small" 
+                  class="verify-btn"
+                  @click="verifyDay(day.date)"
+                >
+                  Verify
+                </el-button>
+                <el-tag v-else-if="isDayVerified(index)" type="success" size="small" class="verify-badge">Verified</el-tag>
               </div>
-              </div>
-
+            </div>
             <div class="total-header">Total</div>
           </div>
 
           <div v-for="project in projectRows" :key="project.id" class="project-row-wrapper">
             <div class="project-row">
               <div class="project-info">
-                <h4>
-                  {{ project.name }} 
-                  <el-tag v-if="project.is_assigned" size="small" type="success">Assigned</el-tag>
-                </h4>
+                <h4>{{ project.name }}</h4>
               </div>
               <div class="days-container">
                 <div v-for="(day, index) in weekDays" :key="index" class="day-column">
-                  <!-- Removed day-label here -->
                   <div class="slider-wrapper" :style="{ width: getSliderWidth(index, project.hours[index]) }">
                     <el-slider 
                       v-model="project.hours[index]" 
@@ -49,7 +63,6 @@
                       :max="getMaxHours(index, project.hours[index])" 
                       :step="0.5" 
                       show-stops
-                      :disabled="isDayVerified(index)"
                       @change="handleHoursChange(project.id, day.date, project.hours[index])"
                     />
                   </div>
@@ -63,46 +76,61 @@
             <el-divider />
           </div>
 
-          <div class="summary-section">
-            <!-- Daily Totals section removed -->
-            
-            <div class="weekly-total">
-              <strong>Weekly Total: {{ getWeeklyTotal() }} / 40h</strong>
-              <el-progress 
-                :percentage="Math.min((getWeeklyTotal() / 40) * 100, 100)" 
-                :status="getWeeklyTotal() > 40 ? 'exception' : (getWeeklyTotal() === 40 ? 'success' : '')"
-              />
-              <el-alert v-if="getWeeklyTotal() > 40" title="Weekly limit exceeded!" type="error" show-icon :closable="false" class="mt-2" />
-            </div>
-          </div>
-
           <div class="actions">
             <el-button type="primary" size="large" @click="saveTimesheet" :loading="saving">Save Changes</el-button>
           </div>
         </el-card>
       </el-main>
     </el-container>
+
+    <el-dialog v-model="showProjectDialog" title="Assign Projects">
+      <p>Assign projects to <strong>{{ selectedEmployee?.username }}</strong></p>
+      <div class="project-list">
+        <el-checkbox-group v-model="selectedProjects">
+          <el-checkbox 
+            v-for="project in allProjectsList" 
+            :key="project.id" 
+            :label="project.id"
+            :disabled="project.is_default"
+          >
+            {{ project.name }} <span v-if="project.is_default">(Default)</span>
+          </el-checkbox>
+        </el-checkbox-group>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="showProjectDialog = false">Cancel</el-button>
+          <el-button type="primary" @click="saveProjectAssignments">Save</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../api/axios'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 
 const authStore = useAuthStore()
-const saving = ref(false)
+
+const employees = ref([])
+const selectedEmployeeId = ref(null)
+const selectedEmployee = computed(() => employees.value.find(e => e.id == selectedEmployeeId.value))
 
 const currentDate = ref(dayjs())
 const projects = ref([])
 const timesheets = ref([])
 const projectRows = ref([])
+const saving = ref(false)
+const showProjectDialog = ref(false)
+const selectedProjects = ref([])
+const allProjectsList = ref([]) // Store all projects for the dialog
 
 const weekDays = computed(() => {
-  const startOfWeek = currentDate.value.startOf('week').add(1, 'day') // Monday
-  // Only 5 days (Mon-Fri)
+  const startOfWeek = currentDate.value.startOf('week').add(1, 'day')
   return Array.from({ length: 5 }, (_, i) => {
     const d = startOfWeek.add(i, 'day')
     return {
@@ -125,28 +153,45 @@ const isCurrentWeek = computed(() => {
   return startOfDisplayedWeek.isSame(startOfCurrentWeek, 'day') || startOfDisplayedWeek.isAfter(startOfCurrentWeek)
 })
 
-
-const changeWeek = (offset) => {
-  currentDate.value = currentDate.value.add(offset, 'week')
-  fetchData()
+const fetchEmployees = async () => {
+  try {
+    const response = await api.get('/users/')
+    // Filter for employees assigned to me (Backend doesn't filter by default, so we filter here or need backend endpoint)
+    // Actually, backend /users/ returns all users. We need to filter by team_leader_id if we had current user id.
+    // But better to have an endpoint /users/my-employees. 
+    // For now, let's assume we can filter on frontend if we know our ID.
+    // Wait, we can use authStore.user.id
+    // But `read_users` returns ALL users.
+    // Let's filter on frontend.
+    // Let's filter on frontend.
+    const myId = authStore.user?.id
+    if (myId) {
+        employees.value = response.data.filter(u => u.team_leader_id === myId)
+    }
+  } catch (error) {
+    ElMessage.error('Failed to fetch employees')
+  }
 }
 
 const fetchData = async () => {
+  if (!selectedEmployeeId.value) return
+  
   try {
-    const [pRes, tRes, userProjectsRes] = await Promise.all([
+    const [allProjectsRes, assignedProjectsRes, tRes] = await Promise.all([
       api.get('/projects/'), // Get all projects (to find defaults)
+      api.get(`/users/${selectedEmployeeId.value}/projects`), // Get assigned projects
       api.get('/timesheets/', {
         params: {
           start_date: weekDays.value[0].date,
           end_date: weekDays.value[4].date,
-          user_id: authStore.user.id // Explicitly pass user_id
+          user_id: selectedEmployeeId.value
         }
-      }),
-      api.get(`/users/${authStore.user.id}/projects`) // Get assigned projects
+      })
     ])
     
-    const allProjects = pRes.data
-    const assignedProjects = userProjectsRes.data
+    const allProjects = allProjectsRes.data
+    allProjectsList.value = allProjects // Store for dialog
+    const assignedProjects = assignedProjectsRes.data
     const assignedIds = new Set(assignedProjects.map(p => p.id))
     
     // Filter: Default projects OR Assigned projects
@@ -154,14 +199,7 @@ const fetchData = async () => {
     
     timesheets.value = tRes.data
     
-    // Sort projects: Non-default (Assigned) > Default.
-    const sortedProjects = [...projects.value].sort((a, b) => {
-        if (a.is_default === b.is_default) return 0;
-        return a.is_default ? 1 : -1; 
-    })
-    
-    // Build grid
-    projectRows.value = sortedProjects.map(p => {
+    projectRows.value = projects.value.map(p => {
       const hours = weekDays.value.map(day => {
         const entry = timesheets.value.find(t => t.project_id === p.id && t.date === day.date)
         return entry ? entry.hours : 0
@@ -169,21 +207,33 @@ const fetchData = async () => {
       return {
         id: p.id,
         name: p.name,
-        is_assigned: !p.is_default, // Approximation for UI
         hours
       }
     })
   } catch (error) {
-    ElMessage.error('Failed to load data')
+    ElMessage.error('Failed to load timesheet data')
   }
+}
+
+const handleEmployeeSelect = (index) => {
+  selectedEmployeeId.value = index
+  fetchData()
+}
+
+const changeWeek = (offset) => {
+  currentDate.value = currentDate.value.add(offset, 'week')
+  fetchData()
 }
 
 const getDailyTotal = (dayIndex) => {
   return projectRows.value.reduce((sum, row) => sum + (row.hours[dayIndex] || 0), 0)
 }
 
-const getWeeklyTotal = () => {
-  return projectRows.value.reduce((sum, row) => sum + row.hours.reduce((a, b) => a + (b || 0), 0), 0)
+const isDayVerified = (dayIndex) => {
+  const date = weekDays.value[dayIndex].date
+  // Check if any entry for this date is verified (all should be same)
+  const entry = timesheets.value.find(t => t.date === date)
+  return entry ? entry.verify : false
 }
 
 const getMaxHours = (dayIndex, currentHours) => {
@@ -195,20 +245,12 @@ const getMaxHours = (dayIndex, currentHours) => {
 
 const getSliderWidth = (dayIndex, currentHours) => {
   const maxHours = getMaxHours(dayIndex, currentHours)
-  // Calculate width as percentage of 8 hours
-  // If max is 8, width is 100%, if max is 1, width is 12.5%
   const widthPercentage = (maxHours / 8) * 100
   return `${widthPercentage}%`
 }
 
-const isDayVerified = (dayIndex) => {
-  const date = weekDays.value[dayIndex].date
-  const entry = timesheets.value.find(t => t.date === date)
-  return entry ? entry.verify : false
-}
-
 const handleHoursChange = (projectId, date, hours) => {
-  // Optional: Real-time validation
+  // Update local state
 }
 
 const saveTimesheet = async () => {
@@ -217,14 +259,12 @@ const saveTimesheet = async () => {
     const promises = []
     for (const row of projectRows.value) {
       row.hours.forEach((h, index) => {
+        const date = weekDays.value[index].date
+        // Always save if > 0 or if existing entry > 0 (to clear it)
         if (h >= 0) {
-           const date = weekDays.value[index].date
-           // Skip if day is verified
-           if (isDayVerified(index)) return
-
            if (h > 0 || timesheets.value.some(t => t.project_id === row.id && t.date === date && t.hours > 0)) {
                promises.push(api.post('/timesheets/', {
-                 user_id: authStore.user.id,
+                 user_id: selectedEmployeeId.value,
                  project_id: row.id,
                  date: date,
                  hours: h
@@ -233,10 +273,9 @@ const saveTimesheet = async () => {
         }
       })
     }
-    
     await Promise.all(promises)
     ElMessage.success('Timesheet saved')
-    fetchData() // Refresh
+    fetchData()
   } catch (error) {
     ElMessage.error('Failed to save: ' + (error.response?.data?.detail || error.message))
   } finally {
@@ -244,10 +283,72 @@ const saveTimesheet = async () => {
   }
 }
 
-onMounted(fetchData)
+const verifyDay = async (date) => {
+  try {
+    await api.post('/timesheets/verify', {
+      user_id: selectedEmployeeId.value,
+      date: date
+    })
+    ElMessage.success('Day verified')
+    fetchData()
+  } catch (error) {
+    ElMessage.error('Failed to verify: ' + (error.response?.data?.detail || error.message))
+  }
+}
+
+const openProjectDialog = async () => {
+  if (!selectedEmployeeId.value) return
+  try {
+    const response = await api.get(`/users/${selectedEmployeeId.value}/projects`)
+    const assigned = response.data.map(p => p.id)
+    selectedProjects.value = assigned
+    showProjectDialog.value = true
+  } catch (error) {
+    ElMessage.error('Failed to fetch user projects')
+  }
+}
+
+const saveProjectAssignments = async () => {
+  try {
+    const currentRes = await api.get(`/users/${selectedEmployeeId.value}/projects`)
+    const currentIds = currentRes.data.map(p => p.id)
+    const newIds = selectedProjects.value
+    
+    const toAdd = newIds.filter(id => !currentIds.includes(id))
+    const toRemove = currentIds.filter(id => !newIds.includes(id))
+    
+    const promises = []
+    for (const id of toAdd) {
+      promises.push(api.post(`/users/${selectedEmployeeId.value}/projects/${id}`))
+    }
+    for (const id of toRemove) {
+      const proj = allProjectsList.value.find(p => p.id === id)
+      if (proj && !proj.is_default) {
+        promises.push(api.delete(`/users/${selectedEmployeeId.value}/projects/${id}`))
+      }
+    }
+    
+    await Promise.all(promises)
+    ElMessage.success('Assignments updated')
+    showProjectDialog.value = false
+    fetchData() // Refresh to show new projects
+  } catch (error) {
+    ElMessage.error('Failed to update assignments: ' + (error.response?.data?.detail || error.message))
+  }
+}
+
+onMounted(() => {
+  fetchEmployees()
+})
 </script>
 
 <style scoped>
+.team-timesheets {
+  height: 100%;
+}
+.timesheet-card {
+  margin-bottom: 20px;
+}
 .timesheet-header {
   display: flex;
   justify-content: space-between;
@@ -257,10 +358,7 @@ onMounted(fetchData)
 .week-range {
   margin: 0 20px;
   font-weight: bold;
-  font-size: 1.1em;
 }
-
-/* New Header Row Styles */
 .header-row {
   display: flex;
   align-items: center;
@@ -270,10 +368,9 @@ onMounted(fetchData)
   margin-bottom: 10px;
   font-weight: bold;
   color: #606266;
-  padding-right: 0; /* Match row padding */
 }
 .project-info-header {
-  width: 200px; /* Match project-info width */
+  width: 200px;
   padding-left: 10px;
   flex-shrink: 0;
 }
@@ -294,15 +391,16 @@ onMounted(fetchData)
 .header-total {
   font-size: 0.9em;
   color: #67C23A;
-  font-weight: bold;
   margin-top: 4px;
 }
-
 .header-total.warning {
   color: #E6A23C;
 }
+.verify-btn {
+  margin-top: 5px;
+}
 .verify-badge {
-  margin-top: 4px;
+  margin-top: 5px;
 }
 .total-header {
   width: 80px;
@@ -310,25 +408,15 @@ onMounted(fetchData)
   padding-right: 10px;
   flex-shrink: 0;
 }
-
-.project-row-wrapper {
-  margin-bottom: 0;
-}
-
 .project-row {
   display: flex;
   align-items: flex-start;
   padding: 10px 0;
-  /* border-bottom moved to divider */
 }
 .project-info {
   width: 200px;
-  padding-right: 10px; /* Adjusted to match header spacing better */
-  padding-left: 10px; /* Added to match header padding-left */
-  display: flex;
-  align-items: center;
+  padding-left: 10px;
   flex-shrink: 0;
-  box-sizing: border-box; /* Ensure padding doesn't add to width if not already set globally */
 }
 .days-container {
   display: flex;
@@ -342,17 +430,15 @@ onMounted(fetchData)
   padding: 0 10px;
   display: flex;
   flex-direction: column;
-  align-items: flex-start; /* Changed from center to flex-start for left alignment */
+  align-items: flex-start;
 }
 .slider-wrapper {
   width: 100%;
-  transition: width 0.3s ease;
 }
 .hours-display {
   margin-top: 5px;
   font-weight: bold;
   color: #409EFF;
-  font-size: 0.9em;
 }
 .project-total {
   width: 80px;
@@ -360,61 +446,21 @@ onMounted(fetchData)
   font-weight: bold;
   color: #67C23A;
   padding-top: 10px;
-  padding-right: 10px; /* Match header padding-right */
+  padding-right: 10px;
   flex-shrink: 0;
-  box-sizing: border-box;
-}
-
-.summary-section {
-  background-color: #f5f7fa;
-  padding: 20px;
-  border-radius: 8px;
-  margin-top: 30px;
-}
-.totals-grid {
-  display: flex;
-  align-items: center;
-}
-.total-label-placeholder {
-  width: 200px;
-  flex-shrink: 0;
-}
-.days-container-totals {
-  display: flex;
-  flex: 1;
-  gap: 20px;
-}
-.total-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  background: white;
-  padding: 10px;
-  border-radius: 4px;
-  flex: 1;
-  min-width: 120px;
-}
-.total-spacer {
-  width: 80px;
-  flex-shrink: 0;
-}
-
-.total-value {
-  font-size: 1.2em;
-  font-weight: bold;
-  color: #67C23A;
-}
-.total-value.warning {
-  color: #E6A23C;
-}
-.weekly-total {
-  margin-top: 20px;
-}
-.mt-2 {
-  margin-top: 10px;
 }
 .actions {
-  margin-top: 30px;
+  margin-top: 20px;
   text-align: right;
+}
+.empty-state {
+  text-align: center;
+  color: #909399;
+  margin-top: 50px;
+}
+.project-list {
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 20px 0;
 }
 </style>

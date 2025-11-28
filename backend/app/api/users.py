@@ -85,6 +85,14 @@ def update_user(
         
     user_data = user_update.dict(exclude_unset=True, exclude={'id', 'password_hash'})
     
+    # Handle team_leader_id update if present
+    if 'team_leader_id' in user_data:
+        # Verify TL exists and has correct role
+        if user_data['team_leader_id'] is not None:
+             tl = session.get(User, user_data['team_leader_id'])
+             if not tl or tl.role != Role.TEAM_LEADER:
+                 raise HTTPException(status_code=400, detail="Invalid Team Leader")
+    
     # Handle date conversion for updates
     for date_field in ['start_date', 'end_date']:
         if date_field in user_data and isinstance(user_data[date_field], str):
@@ -123,12 +131,19 @@ def assign_project(
     user_id: int,
     project_id: int,
     session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_user),
 ):
     user = session.get(User, user_id)
     project = session.get(Project, project_id)
     if not user or not project:
         raise HTTPException(status_code=404, detail="User or Project not found")
+        
+    # Permission check
+    is_admin = current_user.role == Role.ADMIN
+    is_team_leader = current_user.role == Role.TEAM_LEADER and user.team_leader_id == current_user.id
+    
+    if not (is_admin or is_team_leader):
+        raise HTTPException(status_code=403, detail="Not authorized to assign projects")
     
     # Check if already assigned
     link = session.exec(select(UserProjectLink).where(
@@ -155,8 +170,19 @@ def unassign_project(
     user_id: int,
     project_id: int,
     session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_user),
 ):
+    # Permission check (Need to fetch user first to check TL)
+    user = session.get(User, user_id)
+    if not user:
+         raise HTTPException(status_code=404, detail="User not found")
+
+    is_admin = current_user.role == Role.ADMIN
+    is_team_leader = current_user.role == Role.TEAM_LEADER and user.team_leader_id == current_user.id
+    
+    if not (is_admin or is_team_leader):
+        raise HTTPException(status_code=403, detail="Not authorized to unassign projects")
+
     link = session.exec(select(UserProjectLink).where(
         UserProjectLink.user_id == user_id,
         UserProjectLink.project_id == project_id
@@ -184,9 +210,18 @@ def unassign_project(
 def get_user_projects(
     user_id: int,
     session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_user),
 ):
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+        
+    # Permission check
+    is_self = current_user.id == user_id
+    is_admin = current_user.role == Role.ADMIN
+    is_team_leader = current_user.role == Role.TEAM_LEADER and user.team_leader_id == current_user.id
+    
+    if not (is_self or is_admin or is_team_leader):
+        raise HTTPException(status_code=403, detail="Not authorized to view these projects")
+        
     return user.projects

@@ -23,6 +23,12 @@ def read_timesheets(
         query = query.where(Timesheet.user_id == current_user.id)
     elif user_id:
         query = query.where(Timesheet.user_id == user_id)
+    else:
+        # Default to current user's timesheets if no user_id specified (even for Admin/TL)
+        # Unless we want a specific "get all" endpoint, but usually /timesheets/ is for the current context.
+        # If Admin wants to see all, they should probably use a specific filter or we assume they want their own.
+        # Given the bug report "login as TL, see employee work", this is the fix.
+        query = query.where(Timesheet.user_id == current_user.id)
         
     if start_date:
         query = query.where(Timesheet.date >= start_date)
@@ -38,8 +44,17 @@ def create_timesheet(
     current_user: User = Depends(get_current_user)
 ):
     # Validate user permissions
+    if current_user.role == Role.ADMIN:
+        raise HTTPException(status_code=403, detail="Admins cannot log work")
+
     if current_user.role == Role.EMPLOYEE and timesheet.user_id != current_user.id:
          raise HTTPException(status_code=403, detail="Cannot log time for others")
+    
+    # Auto-verify for Team Leader's own work
+    if current_user.role == Role.TEAM_LEADER and timesheet.user_id == current_user.id:
+        timesheet.verify = True
+    elif current_user.role == Role.EMPLOYEE:
+        timesheet.verify = False
     
     # 1. Check Weekly Limit (40 hours)
     # Calculate start of week (Monday)
@@ -99,6 +114,29 @@ def create_timesheet(
         # So: (weekly_hours - existing.hours + new.hours) > 40
         if (weekly_hours - existing.hours + timesheet.hours) > 40:
              raise HTTPException(status_code=400, detail="Weekly limit exceeded")
+        
+        # Check verification status
+        if existing.verify:
+            # Team Leader can modify verified work, but Employee cannot
+            if current_user.role == Role.EMPLOYEE:
+                raise HTTPException(status_code=403, detail="Cannot modify verified timesheet")
+            # If TL modifies, does it stay verified? Requirement: "Teamleader can modify any log work. teamleader's log work will always be verified."
+            # It doesn't explicitly say TL modification of EMPLOYEE work re-verifies it, but usually yes.
+            # However, if TL is modifying to FIX it, maybe they want to verify it too.
+            # Let's assume TL modification keeps it verified or sets it to verified if they are the ones doing it.
+            # For now, let's keep the existing verify status unless explicitly changed, OR if TL is editing own work (handled above).
+            # Actually, if TL edits employee work, it's likely "approved" by them.
+            # But let's stick to: If it was verified, it stays verified. If it wasn't, it stays unverified unless verified via endpoint?
+            # Wait, "teamleader's log work will always be verified" applies to THEIR work.
+            # "teamleader can modify any log work" -> Permission.
+            # "wait teamleader to verify" -> Action.
+            # So editing doesn't necessarily mean verifying.
+            pass
+
+        existing.hours = timesheet.hours
+        # If TL is editing own work, ensure verify is True
+        if current_user.role == Role.TEAM_LEADER and timesheet.user_id == current_user.id:
+            existing.verify = True
              
         existing.hours = timesheet.hours
         existing.updated_at = datetime.utcnow() # Need datetime import
@@ -122,3 +160,54 @@ def create_timesheet(
 
 # Need to import datetime for updated_at
 from datetime import datetime
+
+from pydantic import BaseModel
+
+class VerifyRequest(BaseModel):
+    user_id: int
+    date: date
+
+@router.post("/verify")
+def verify_day(
+    request: VerifyRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != Role.TEAM_LEADER:
+        raise HTTPException(status_code=403, detail="Only Team Leaders can verify")
+    
+    # Check if user is assigned to this TL
+    target_user = session.get(User, request.user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    if target_user.team_leader_id != current_user.id:
+        raise HTTPException(status_code=403, detail="User is not assigned to you")
+        
+    # Calculate total hours for that day
+    if isinstance(request.date, str):
+        request.date = datetime.strptime(request.date, "%Y-%m-%d").date()
+        
+    daily_hours = session.exec(
+        select(func.sum(Timesheet.hours))
+        .where(Timesheet.user_id == request.user_id)
+        .where(Timesheet.date == request.date)
+    ).one() or 0
+    
+    if daily_hours > 8:
+        raise HTTPException(status_code=400, detail=f"Cannot verify > 8 hours (Current: {daily_hours}h)")
+        
+    # Update all entries to verify=True
+    timesheets = session.exec(
+        select(Timesheet)
+        .where(Timesheet.user_id == request.user_id)
+        .where(Timesheet.date == request.date)
+    ).all()
+    
+    for t in timesheets:
+        t.verify = True
+        session.add(t)
+        
+    session.commit()
+    return {"message": "Verified successfully"}
+

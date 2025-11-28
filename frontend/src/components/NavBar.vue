@@ -22,6 +22,10 @@
     <template v-if="authStore.isAdmin">
       <el-menu-item index="/logs">Activity Logs</el-menu-item>
     </template>
+    
+    <template v-if="authStore.user?.role === 'team_leader'">
+      <el-menu-item index="/team-timesheets">Team Timesheets</el-menu-item>
+    </template>
 
     <el-sub-menu index="user" v-if="authStore.user">
       <template #title>{{ authStore.user.username }}</template>
