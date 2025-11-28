@@ -53,3 +53,7 @@ frontend/dist-ssr/
 
 # MacOS
 .DS_Store
+
+
+frontend/nohup.out
+backend/nohup.out
