@@ -38,6 +38,13 @@ const router = createRouter({
             meta: { requiresAuth: true, requiresAdmin: true }
         },
         {
+            path: '/email-settings',
+            name: 'email-settings',
+            component: () => import('../views/EmailSettings.vue'),
+            meta: { requiresAuth: true, requiresAdmin: true }
+        },
+
+        {
             path: '/log-work',
             name: 'log-work',
             component: () => import('../views/LogWork.vue')

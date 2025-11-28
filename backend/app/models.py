@@ -12,6 +12,15 @@ class ProjectStatus(str, Enum):
     CLOSE = "CLOSE"
     NOT_START = "NOT START"
 
+class SMTPSettings(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    smtp_server: str
+    smtp_port: int
+    smtp_username: str
+    smtp_password: str
+    sender_email: str
+
+
 class UserProjectLink(SQLModel, table=True):
     user_id: Optional[int] = Field(default=None, foreign_key="user.id", primary_key=True)
     project_id: Optional[int] = Field(default=None, foreign_key="project.id", primary_key=True)

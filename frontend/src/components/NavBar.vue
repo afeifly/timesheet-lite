@@ -26,6 +26,9 @@
     <el-sub-menu index="user" v-if="authStore.user">
       <template #title>{{ authStore.user.username }}</template>
       <el-menu-item @click="showPasswordDialog = true">Change Password</el-menu-item>
+      <template v-if="authStore.isAdmin">
+        <el-menu-item index="/email-settings">Email Settings</el-menu-item>
+      </template>
       <el-menu-item @click="handleLogout">Logout</el-menu-item>
     </el-sub-menu>
 
