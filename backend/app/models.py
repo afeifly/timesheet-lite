@@ -6,6 +6,7 @@ from enum import Enum
 class Role(str, Enum):
     ADMIN = "admin"
     EMPLOYEE = "employee"
+    TEAM_LEADER = "team_leader"
 
 class ProjectStatus(str, Enum):
     RUN = "RUN"
@@ -28,6 +29,7 @@ class UserProjectLink(SQLModel, table=True):
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(index=True, unique=True)
+    email: Optional[str] = None
     full_name: Optional[str] = None
     cost_center: Optional[str] = None
     remark: Optional[str] = None
@@ -66,6 +68,7 @@ class Timesheet(SQLModel, table=True):
     project_id: int = Field(foreign_key="project.id")
     date: date
     hours: float
+    verify: bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     

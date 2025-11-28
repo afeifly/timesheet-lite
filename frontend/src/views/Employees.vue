@@ -8,6 +8,7 @@
     <el-table :data="users" style="width: 100%">
       <el-table-column prop="id" label="ID" width="60" />
       <el-table-column prop="username" label="Username (Login)" width="120" />
+      <el-table-column prop="email" label="Email" width="180" />
       <el-table-column prop="full_name" label="Full Name" width="150" />
       <el-table-column prop="cost_center" label="Cost Center" width="120" />
       <el-table-column prop="remark" label="Mark" width="120" />
@@ -48,6 +49,9 @@
         <el-form-item label="Full Name">
           <el-input v-model="form.full_name" />
         </el-form-item>
+        <el-form-item label="Email">
+          <el-input v-model="form.email" placeholder="user@example.com" />
+        </el-form-item>
         <el-form-item label="Cost Center">
           <el-select v-model="form.cost_center" placeholder="Select Cost Center">
             <el-option label="R&D-XA" value="R&D-XA" />
@@ -69,6 +73,7 @@
         <el-form-item label="Role">
           <el-select v-model="form.role" placeholder="Select role">
             <el-option label="Employee" value="employee" />
+            <el-option label="Team Leader" value="team_leader" />
             <el-option label="Admin" value="admin" />
           </el-select>
         </el-form-item>
@@ -123,6 +128,7 @@ const selectedProjects = ref([])
 
 const form = ref({
   username: '',
+  email: '',
   full_name: '',
   cost_center: '',
   remark: '',
@@ -154,6 +160,7 @@ const openCreateDialog = () => {
   isEditing.value = false
   form.value = {
     username: '',
+    email: '',
     full_name: '',
     cost_center: '',
     remark: '',
@@ -179,6 +186,7 @@ const submitUser = async () => {
     } else {
       const userData = {
         username: form.value.username,
+        email: form.value.email,
         full_name: form.value.full_name,
         cost_center: form.value.cost_center,
         remark: form.value.remark,

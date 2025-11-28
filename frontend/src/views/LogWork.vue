@@ -17,7 +17,10 @@
             <div class="project-info-header">Project</div>
             <div class="days-header">
               <div v-for="(day, index) in weekDays" :key="index" class="day-header-item">
-                {{ day.label }}
+                <div>{{ day.label }}</div>
+                <div :class="['header-total', { 'warning': getDailyTotal(index) !== 8 }]">
+                  {{ getDailyTotal(index) }}h
+                </div>
               </div>
             </div>
             <div class="total-header">Total</div>
@@ -55,21 +58,7 @@
           </div>
 
           <div class="summary-section">
-            <div class="daily-totals">
-              <h4>Daily Totals</h4>
-              <div class="totals-grid">
-                <div class="total-label-placeholder"></div> <!-- Spacer to align with project-info -->
-                <div class="days-container-totals">
-                  <div v-for="(day, index) in weekDays" :key="index" class="total-item">
-                    <span class="day-name">{{ day.label }}</span>
-                    <span :class="['total-value', { 'warning': getDailyTotal(index) !== 8 }]">
-                      {{ getDailyTotal(index) }}h
-                    </span>
-                  </div>
-                </div>
-                <div class="total-spacer"></div>
-              </div>
-            </div>
+            <!-- Daily Totals section removed -->
             
             <div class="weekly-total">
               <strong>Weekly Total: {{ getWeeklyTotal() }} / 40h</strong>
@@ -274,6 +263,19 @@ onMounted(fetchData)
   flex: 1;
   text-align: center;
   min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.header-total {
+  font-size: 0.9em;
+  color: #67C23A;
+  font-weight: bold;
+  margin-top: 4px;
+}
+.header-total.warning {
+  color: #E6A23C;
 }
 .total-header {
   width: 80px;
