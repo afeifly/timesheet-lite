@@ -50,17 +50,24 @@ def create_timesheet(
     if current_user.role == Role.EMPLOYEE and timesheet.user_id != current_user.id:
          raise HTTPException(status_code=403, detail="Cannot log time for others")
     
-    # Auto-verify for Team Leader's own work
-    if current_user.role == Role.TEAM_LEADER and timesheet.user_id == current_user.id:
-        timesheet.verify = True
-    elif current_user.role == Role.EMPLOYEE:
+    # Auto-verify logic: Employee always False. TL/Admin can set it (default from input).
+    if current_user.role == Role.EMPLOYEE:
         timesheet.verify = False
     
-    # 1. Check Weekly Limit (40 hours)
+    # 1. Check if entry exists for this project/date/user -> Update instead of Create?
+    # We need to check this FIRST before calculating weekly limits
     # Calculate start of week (Monday)
     if isinstance(timesheet.date, str):
         timesheet.date = datetime.strptime(timesheet.date, "%Y-%m-%d").date()
         
+    existing = session.exec(
+        select(Timesheet)
+        .where(Timesheet.user_id == timesheet.user_id)
+        .where(Timesheet.project_id == timesheet.project_id)
+        .where(Timesheet.date == timesheet.date)
+    ).first()
+    
+    # 2. Check Weekly Limit (40 hours)
     start_of_week = timesheet.date - timedelta(days=timesheet.date.weekday())
     end_of_week = start_of_week + timedelta(days=6)
     
@@ -69,15 +76,15 @@ def create_timesheet(
         .where(Timesheet.user_id == timesheet.user_id)
         .where(Timesheet.date >= start_of_week)
         .where(Timesheet.date <= end_of_week)
-        # Exclude current timesheet if it's an update (but this is create, so no ID yet)
     ).one() or 0
+    
+    # If updating existing entry, subtract its current hours from weekly total
+    if existing:
+        weekly_hours -= existing.hours
     
     if weekly_hours + timesheet.hours > 40:
         raise HTTPException(status_code=400, detail=f"Weekly limit exceeded. Current: {weekly_hours}, Requested: {timesheet.hours}")
 
-    # 2. Check Daily Warning (Frontend handles warning, backend just accepts, but maybe we should return a warning flag? 
-    # The requirement says 'Show warning', usually implies frontend. Backend enforces hard rules.)
-    
     # 3. Pre-planning check
     # "Edit past weeks only if admin permissions allow" -> Now "past two weeks can be modify again"
     today = date.today()
@@ -86,22 +93,8 @@ def create_timesheet(
     # So cutoff is start_of_current_week - 14 days.
     cutoff_date = start_of_current_week - timedelta(weeks=2)
     
-    if timesheet.date < cutoff_date and current_user.role != Role.ADMIN:
+    if timesheet.date < cutoff_date and current_user.role not in [Role.ADMIN, Role.TEAM_LEADER]:
         raise HTTPException(status_code=403, detail="Cannot modify timesheets older than 2 weeks")
-
-    # Check if entry exists for this project/date/user -> Update instead of Create?
-    # Usually timesheets are unique per user/project/date or just a list of entries.
-    # Let's assume unique per user/project/date for simplicity, or allow multiple entries?
-    # "Allocate 8 hours per day across assigned projects" -> implies summing up.
-    # Let's check if an entry exists and update it, or just add new one. 
-    # Simplest is: One entry per project per day.
-    
-    existing = session.exec(
-        select(Timesheet)
-        .where(Timesheet.user_id == timesheet.user_id)
-        .where(Timesheet.project_id == timesheet.project_id)
-        .where(Timesheet.date == timesheet.date)
-    ).first()
     
     # Fetch project name for logging
     project = session.get(Project, timesheet.project_id)
@@ -109,34 +102,18 @@ def create_timesheet(
 
     if existing:
         # Update existing
-        # We need to subtract the old value from weekly check and add new value
-        # But we already did the check with `weekly_hours` which INCLUDES the old value if it's in DB.
-        # So: (weekly_hours - existing.hours + new.hours) > 40
-        if (weekly_hours - existing.hours + timesheet.hours) > 40:
-             raise HTTPException(status_code=400, detail="Weekly limit exceeded")
+        # Weekly limit already checked above
         
         # Check verification status
         if existing.verify:
             # Team Leader can modify verified work, but Employee cannot
             if current_user.role == Role.EMPLOYEE:
                 raise HTTPException(status_code=403, detail="Cannot modify verified timesheet")
-            # If TL modifies, does it stay verified? Requirement: "Teamleader can modify any log work. teamleader's log work will always be verified."
-            # It doesn't explicitly say TL modification of EMPLOYEE work re-verifies it, but usually yes.
-            # However, if TL is modifying to FIX it, maybe they want to verify it too.
-            # Let's assume TL modification keeps it verified or sets it to verified if they are the ones doing it.
-            # For now, let's keep the existing verify status unless explicitly changed, OR if TL is editing own work (handled above).
-            # Actually, if TL edits employee work, it's likely "approved" by them.
-            # But let's stick to: If it was verified, it stays verified. If it wasn't, it stays unverified unless verified via endpoint?
-            # Wait, "teamleader's log work will always be verified" applies to THEIR work.
-            # "teamleader can modify any log work" -> Permission.
-            # "wait teamleader to verify" -> Action.
-            # So editing doesn't necessarily mean verifying.
-            pass
-
+            
         existing.hours = timesheet.hours
-        # If TL is editing own work, ensure verify is True
-        if current_user.role == Role.TEAM_LEADER and timesheet.user_id == current_user.id:
-            existing.verify = True
+        # Update verify status if provided (and allowed)
+        if current_user.role in [Role.TEAM_LEADER, Role.ADMIN]:
+             existing.verify = timesheet.verify
              
         existing.hours = timesheet.hours
         existing.updated_at = datetime.utcnow() # Need datetime import

@@ -21,7 +21,6 @@
               <el-button @click="changeWeek(-1)">Previous Week</el-button>
               <span class="week-range">{{ weekRange }}</span>
               <el-button @click="changeWeek(1)" :disabled="isCurrentWeek">Next Week</el-button>
-              <el-button type="primary" @click="openProjectDialog" style="margin-left: 20px;">Assign Projects</el-button>
             </div>
           </div>
 
@@ -34,16 +33,8 @@
                 <div :class="['header-total', { 'warning': getDailyTotal(index) > 8 }]">
                   {{ getDailyTotal(index) }}h
                 </div>
-                <el-button 
-                  v-if="!isDayVerified(index) && getDailyTotal(index) > 0" 
-                  type="success" 
-                  size="small" 
-                  class="verify-btn"
-                  @click="verifyDay(day.date)"
-                >
-                  Verify
-                </el-button>
-                <el-tag v-else-if="isDayVerified(index)" type="success" size="small" class="verify-badge">Verified</el-tag>
+                <el-tag v-if="isDayVerified(index)" type="success" size="small" class="verify-badge">Verified</el-tag>
+                <el-tag v-else type="info" size="small" class="verify-badge">Unverified</el-tag>
               </div>
             </div>
             <div class="total-header">Total</div>
@@ -77,33 +68,11 @@
           </div>
 
           <div class="actions">
-            <el-button type="primary" size="large" @click="saveTimesheet" :loading="saving">Save Changes</el-button>
+            <el-button type="primary" size="large" @click="saveTimesheet" :loading="saving">Save & Verify</el-button>
           </div>
         </el-card>
       </el-main>
     </el-container>
-
-    <el-dialog v-model="showProjectDialog" title="Assign Projects">
-      <p>Assign projects to <strong>{{ selectedEmployee?.username }}</strong></p>
-      <div class="project-list">
-        <el-checkbox-group v-model="selectedProjects">
-          <el-checkbox 
-            v-for="project in allProjectsList" 
-            :key="project.id" 
-            :label="project.id"
-            :disabled="project.is_default"
-          >
-            {{ project.name }} <span v-if="project.is_default">(Default)</span>
-          </el-checkbox>
-        </el-checkbox-group>
-      </div>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="showProjectDialog = false">Cancel</el-button>
-          <el-button type="primary" @click="saveProjectAssignments">Save</el-button>
-        </span>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -125,9 +94,6 @@ const projects = ref([])
 const timesheets = ref([])
 const projectRows = ref([])
 const saving = ref(false)
-const showProjectDialog = ref(false)
-const selectedProjects = ref([])
-const allProjectsList = ref([]) // Store all projects for the dialog
 
 const weekDays = computed(() => {
   const startOfWeek = currentDate.value.startOf('week').add(1, 'day')
@@ -166,7 +132,7 @@ const fetchEmployees = async () => {
     // Let's filter on frontend.
     const myId = authStore.user?.id
     if (myId) {
-        employees.value = response.data.filter(u => u.team_leader_id === myId)
+        employees.value = response.data.filter(u => u.team_leader_id === myId || u.id === myId)
     }
   } catch (error) {
     ElMessage.error('Failed to fetch employees')
@@ -190,7 +156,6 @@ const fetchData = async () => {
     ])
     
     const allProjects = allProjectsRes.data
-    allProjectsList.value = allProjects // Store for dialog
     const assignedProjects = assignedProjectsRes.data
     const assignedIds = new Set(assignedProjects.map(p => p.id))
     
@@ -257,9 +222,21 @@ const saveTimesheet = async () => {
   saving.value = true
   try {
     const promises = []
+    
+    // Calculate daily totals first to determine verification status
+    const dailyTotals = weekDays.value.map((day, index) => {
+        return {
+            date: day.date,
+            total: getDailyTotal(index)
+        }
+    })
+
     for (const row of projectRows.value) {
       row.hours.forEach((h, index) => {
         const date = weekDays.value[index].date
+        const dayTotal = dailyTotals[index].total
+        const shouldVerify = dayTotal === 8
+        
         // Always save if > 0 or if existing entry > 0 (to clear it)
         if (h >= 0) {
            if (h > 0 || timesheets.value.some(t => t.project_id === row.id && t.date === date && t.hours > 0)) {
@@ -267,73 +244,20 @@ const saveTimesheet = async () => {
                  user_id: selectedEmployeeId.value,
                  project_id: row.id,
                  date: date,
-                 hours: h
+                 hours: h,
+                 verify: shouldVerify
                }))
            }
         }
       })
     }
     await Promise.all(promises)
-    ElMessage.success('Timesheet saved')
+    ElMessage.success('Timesheet saved and verified where applicable')
     fetchData()
   } catch (error) {
     ElMessage.error('Failed to save: ' + (error.response?.data?.detail || error.message))
   } finally {
     saving.value = false
-  }
-}
-
-const verifyDay = async (date) => {
-  try {
-    await api.post('/timesheets/verify', {
-      user_id: selectedEmployeeId.value,
-      date: date
-    })
-    ElMessage.success('Day verified')
-    fetchData()
-  } catch (error) {
-    ElMessage.error('Failed to verify: ' + (error.response?.data?.detail || error.message))
-  }
-}
-
-const openProjectDialog = async () => {
-  if (!selectedEmployeeId.value) return
-  try {
-    const response = await api.get(`/users/${selectedEmployeeId.value}/projects`)
-    const assigned = response.data.map(p => p.id)
-    selectedProjects.value = assigned
-    showProjectDialog.value = true
-  } catch (error) {
-    ElMessage.error('Failed to fetch user projects')
-  }
-}
-
-const saveProjectAssignments = async () => {
-  try {
-    const currentRes = await api.get(`/users/${selectedEmployeeId.value}/projects`)
-    const currentIds = currentRes.data.map(p => p.id)
-    const newIds = selectedProjects.value
-    
-    const toAdd = newIds.filter(id => !currentIds.includes(id))
-    const toRemove = currentIds.filter(id => !newIds.includes(id))
-    
-    const promises = []
-    for (const id of toAdd) {
-      promises.push(api.post(`/users/${selectedEmployeeId.value}/projects/${id}`))
-    }
-    for (const id of toRemove) {
-      const proj = allProjectsList.value.find(p => p.id === id)
-      if (proj && !proj.is_default) {
-        promises.push(api.delete(`/users/${selectedEmployeeId.value}/projects/${id}`))
-      }
-    }
-    
-    await Promise.all(promises)
-    ElMessage.success('Assignments updated')
-    showProjectDialog.value = false
-    fetchData() // Refresh to show new projects
-  } catch (error) {
-    ElMessage.error('Failed to update assignments: ' + (error.response?.data?.detail || error.message))
   }
 }
 
@@ -395,9 +319,6 @@ onMounted(() => {
 }
 .header-total.warning {
   color: #E6A23C;
-}
-.verify-btn {
-  margin-top: 5px;
 }
 .verify-badge {
   margin-top: 5px;

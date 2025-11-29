@@ -15,17 +15,22 @@ def get_weekly_report(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    # Get all users
-    users = session.exec(select(User).where(User.is_deleted == False)).all()
+    # Get all users (exclude admins since they cannot log work)
+    users = session.exec(
+        select(User)
+        .where(User.is_deleted == False)
+        .where(User.role != Role.ADMIN)
+    ).all()
     
     # Get all projects
     projects = session.exec(select(Project).where(Project.is_deleted == False)).all()
     
-    # Get all timesheets for the date range
+    # Get all VERIFIED timesheets for the date range
     timesheets = session.exec(
         select(Timesheet)
         .where(Timesheet.date >= start_date)
         .where(Timesheet.date <= end_date)
+        .where(Timesheet.verify == True)
     ).all()
     
     # Build report data: users as rows, projects as columns
@@ -99,8 +104,12 @@ def get_user_stats(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    # Get all timesheets for the current user
-    timesheets = session.exec(select(Timesheet).where(Timesheet.user_id == current_user.id)).all()
+    # Get all VERIFIED timesheets for the current user
+    timesheets = session.exec(
+        select(Timesheet)
+        .where(Timesheet.user_id == current_user.id)
+        .where(Timesheet.verify == True)
+    ).all()
     
     total_hours = sum(t.hours for t in timesheets)
     
