@@ -133,6 +133,17 @@ const fetchEmployees = async () => {
     const myId = authStore.user?.id
     if (myId) {
         employees.value = response.data.filter(u => u.team_leader_id === myId || u.id === myId)
+        // Default select myself if I'm in the list and nothing selected yet
+        if (!selectedEmployeeId.value) {
+            const myself = employees.value.find(e => e.id === myId)
+            if (myself) {
+                selectedEmployeeId.value = myself.id
+                // We need to trigger fetchData manually or wait for watcher if we had one. 
+                // Since we don't have a watcher on selectedEmployeeId that calls fetchData automatically (we only have handleEmployeeSelect),
+                // we should call fetchData here.
+                fetchData()
+            }
+        }
     }
   } catch (error) {
     ElMessage.error('Failed to fetch employees')
@@ -161,6 +172,12 @@ const fetchData = async () => {
     
     // Filter: Default projects OR Assigned projects
     projects.value = allProjects.filter(p => p.is_default || assignedIds.has(p.id))
+    
+    // Sort: Custom projects (is_default=false) at top, Default projects (is_default=true) at bottom
+    projects.value.sort((a, b) => {
+        if (a.is_default === b.is_default) return 0
+        return a.is_default ? 1 : -1
+    })
     
     timesheets.value = tRes.data
     

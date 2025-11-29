@@ -20,7 +20,31 @@
     <el-card class="report-card">
       <template #header>
         <div class="card-header">
-          <span>Report</span>
+          <div class="header-left">
+            <span>Report</span>
+            <div class="filters">
+              <el-button-group>
+                <el-button @click="navigate(-1)" :disabled="reportType === 'custom'">&lt;</el-button>
+                <el-button @click="navigate(1)" :disabled="reportType === 'custom'">&gt;</el-button>
+              </el-button-group>
+              
+              <el-date-picker
+                v-model="dateRange"
+                type="daterange"
+                range-separator="To"
+                start-placeholder="Start date"
+                end-placeholder="End date"
+                format="YYYY-MM-DD"
+                value-format="YYYY-MM-DD"
+                @change="handleDateChange"
+              />
+              
+              <el-button-group>
+                <el-button :type="reportType === 'month' ? 'primary' : ''" @click="setMonth">Monthly</el-button>
+                <el-button :type="reportType === 'year' ? 'primary' : ''" @click="setYear">Yearly</el-button>
+              </el-button-group>
+            </div>
+          </div>
           <el-button type="primary" @click="exportReport">Export Excel</el-button>
         </div>
       </template>
@@ -83,6 +107,9 @@ const isAdmin = computed(() => authStore.user?.role === 'admin')
 const stats = ref({ total_users: 0, total_projects: 0 })
 const reportData = ref({ users: [], projects: [] })
 
+const dateRange = ref([])
+const reportType = ref('custom') // 'custom', 'month', 'year'
+
 const formatDateRange = (startDate, endDate) => {
   if (!startDate && !endDate) return ''
   if (!startDate) return `~ ${endDate}`
@@ -101,17 +128,69 @@ const fetchStats = async () => {
 
 const fetchReport = async () => {
   try {
-    // Fetch all data without date filtering
-    const response = await api.get('/reports/weekly', {
-      params: {
-        start_date: '2000-01-01',
-        end_date: '2099-12-31'
+    const params = {}
+    if (dateRange.value && dateRange.value.length === 2) {
+      params.start_date = dateRange.value[0]
+      params.end_date = dateRange.value[1]
+    } else {
+      // Default to wide range if no date selected, or maybe current month?
+      // User said "give a time select... it will give a range for the report"
+      // Let's default to current month if nothing selected initially
+      const start = dayjs().startOf('month').format('YYYY-MM-DD')
+      const end = dayjs().endOf('month').format('YYYY-MM-DD')
+      params.start_date = start
+      params.end_date = end
+      // Also update UI to reflect this default
+      if (!dateRange.value || dateRange.value.length === 0) {
+          dateRange.value = [start, end]
+          reportType.value = 'month'
       }
-    })
+    }
+
+    const response = await api.get('/reports/weekly', { params })
     reportData.value = response.data
   } catch (error) {
     ElMessage.error('Failed to fetch report')
   }
+}
+
+const handleDateChange = () => {
+  reportType.value = 'custom'
+  fetchReport()
+}
+
+const setMonth = () => {
+  const start = dayjs().startOf('month').format('YYYY-MM-DD')
+  const end = dayjs().endOf('month').format('YYYY-MM-DD')
+  dateRange.value = [start, end]
+  reportType.value = 'month'
+  fetchReport()
+}
+
+const setYear = () => {
+  const start = dayjs().startOf('year').format('YYYY-MM-DD')
+  const end = dayjs().endOf('year').format('YYYY-MM-DD')
+  dateRange.value = [start, end]
+  reportType.value = 'year'
+  fetchReport()
+}
+
+const navigate = (direction) => {
+  if (reportType.value === 'custom' || !dateRange.value || dateRange.value.length !== 2) return
+
+  let start = dayjs(dateRange.value[0])
+  let end = dayjs(dateRange.value[1])
+
+  if (reportType.value === 'month') {
+    start = start.add(direction, 'month').startOf('month')
+    end = end.add(direction, 'month').endOf('month')
+  } else if (reportType.value === 'year') {
+    start = start.add(direction, 'year').startOf('year')
+    end = end.add(direction, 'year').endOf('year')
+  }
+
+  dateRange.value = [start.format('YYYY-MM-DD'), end.format('YYYY-MM-DD')]
+  fetchReport()
 }
 
 const exportReport = async () => {
@@ -291,9 +370,15 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
 }
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
 .filters {
   display: flex;
   gap: 10px;
+  align-items: center;
 }
 .report-card {
   /* width: 100%; Removed to prevent overflow if padding is involved */
