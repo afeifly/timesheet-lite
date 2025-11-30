@@ -25,7 +25,7 @@
             <div class="filters">
               <el-button-group>
                 <el-button @click="navigate(-1)" :disabled="reportType === 'custom'">&lt;</el-button>
-                <el-button @click="navigate(1)" :disabled="reportType === 'custom'">&gt;</el-button>
+                <el-button @click="navigate(1)" :disabled="reportType === 'custom' || isNextDisabled">&gt;</el-button>
               </el-button-group>
               
               <el-date-picker
@@ -49,6 +49,14 @@
         </div>
       </template>
       
+      <div class="report-table-header">
+        <h2 class="report-title">R&D Staff Time sheet</h2>
+        <div class="report-sub-header">
+          <div class="sub-header-left">SUTO-iTEC</div>
+          <div class="sub-header-right">{{ headerDateRange }}</div>
+        </div>
+      </div>
+      
       <el-table :data="reportData.users" border stripe max-height="600">
         <el-table-column prop="full_name" label="Full Name" width="150" fixed />
         <el-table-column prop="cost_center" label="Cost Center" width="120" />
@@ -68,7 +76,7 @@
             <!-- Custom project: four lines with borders -->
             <div v-else class="project-header custom-project">
               <div class="project-header-line with-border">{{ project.full_name || project.name }}</div>
-              <div class="project-header-line with-border">{{ project.chinese_name }}</div>
+              <div class="project-header-line with-border">{{ project.chinese_name || ' ' }}</div>
               <div class="project-header-line with-border">{{ project.custom_id || project.id }}</div>
               <div class="project-header-line time-range">
                 {{ formatDateRange(project.start_date, project.plan_closed_date) }}
@@ -110,6 +118,11 @@ const reportData = ref({ users: [], projects: [] })
 const dateRange = ref([])
 const reportType = ref('custom') // 'custom', 'month', 'year'
 
+const headerDateRange = computed(() => {
+  if (!dateRange.value || dateRange.value.length !== 2) return ''
+  return `${dateRange.value[0]} ~ ${dateRange.value[1]}`
+})
+
 const formatDateRange = (startDate, endDate) => {
   if (!startDate && !endDate) return ''
   if (!startDate) return `~ ${endDate}`
@@ -117,7 +130,24 @@ const formatDateRange = (startDate, endDate) => {
   return `${startDate} ~ ${endDate}`
 }
 
+const isNextDisabled = computed(() => {
+  if (reportType.value === 'custom' || !dateRange.value || dateRange.value.length !== 2) return true
+  
+  const start = dayjs(dateRange.value[0])
+  const today = dayjs()
+  
+  if (reportType.value === 'month') {
+    // If next month starts after today, disable
+    return start.add(1, 'month').startOf('month').isAfter(today)
+  } else if (reportType.value === 'year') {
+    // If next year starts after today, disable
+    return start.add(1, 'year').startOf('year').isAfter(today)
+  }
+  return false
+})
+
 const fetchStats = async () => {
+  if (!isAdmin.value) return
   try {
     const response = await api.get('/reports/stats')
     stats.value = response.data
@@ -189,6 +219,11 @@ const navigate = (direction) => {
     end = end.add(direction, 'year').endOf('year')
   }
 
+  // Prevent future navigation
+  if (direction > 0 && start.isAfter(dayjs())) {
+      return
+  }
+
   dateRange.value = [start.format('YYYY-MM-DD'), end.format('YYYY-MM-DD')]
   fetchReport()
 }
@@ -216,18 +251,13 @@ const exportReport = async () => {
   setColWidth(colIdx + 2, 12); // Start Date
   setColWidth(colIdx + 3, 12); // End Date
 
+  const totalCols = colIdx + 3;
 
   // --- Header Construction ---
-  // We have 6 header rows
-  // Row 1: Full Name, Cost Center, [Project Names/Full Names], Total Hours...
-  // Row 2: [Chinese Names]
-  // Row 3: [Chinese Names continued/merged]
-  // Row 4: [IDs]
-  // Row 5: [Date Ranges]
-  // Row 6: [Date Ranges continued/merged]
-
-  // Initialize 6 empty rows
-  for(let i=0; i<6; i++) {
+  // We have 2 Report Header Rows + 6 Table Header Rows = 8 Rows total for headers
+  
+  // Initialize 8 empty rows
+  for(let i=0; i<8; i++) {
     worksheet.addRow([]);
   }
 
@@ -248,38 +278,72 @@ const exportReport = async () => {
     };
   };
 
-  // 1. Fixed Columns (Full Name, Cost Center) - Merge 1-6
-  setCell(1, 1, 'Full Name');
-  worksheet.mergeCells(1, 1, 6, 1);
+  // --- Report Headers (Rows 1-2) ---
   
-  setCell(1, 2, 'Cost Center');
-  worksheet.mergeCells(1, 2, 6, 2);
+  // Row 1: Title
+  worksheet.mergeCells(1, 1, 1, totalCols);
+  setCell(1, 1, 'R&D Staff Time sheet', {
+    font: { size: 16, bold: true },
+    alignment: { vertical: 'middle', horizontal: 'center' },
+    border: {} // No border for title? Or maybe outside border? Let's keep it clean.
+  });
+  // Remove borders for title cell if desired, or keep them. 
+  // User didn't specify, but usually title doesn't have grid borders. 
+  // Let's keep the setCell default borders for consistency with the table, or maybe remove them.
+  // Actually, let's remove borders for the title row to look like a document header.
+  worksheet.getCell(1, 1).border = {};
+
+  // Row 2: Sub-headers
+  // Left: SUTO-iTEC
+  setCell(2, 1, 'SUTO-iTEC', {
+    font: { bold: true },
+    alignment: { vertical: 'middle', horizontal: 'left' },
+    border: { bottom: { style: 'thin' } } // Separator line
+  });
+  // Right: Date Range (Merge remaining cells)
+  worksheet.mergeCells(2, 2, 2, totalCols);
+  setCell(2, 2, headerDateRange.value, {
+    font: { bold: true },
+    alignment: { vertical: 'middle', horizontal: 'right' },
+    border: { bottom: { style: 'thin' } }
+  });
+
+
+  // --- Table Headers (Rows 3-8) ---
+  // Offset everything by 2 rows
+
+  // 1. Fixed Columns (Full Name, Cost Center) - Merge 3-8
+  setCell(3, 1, 'Full Name', { alignment: { vertical: 'bottom', horizontal: 'center', wrapText: true } });
+  worksheet.mergeCells(3, 1, 8, 1);
+  
+  setCell(3, 2, 'Cost Center', { alignment: { vertical: 'bottom', horizontal: 'center', wrapText: true } });
+  worksheet.mergeCells(3, 2, 8, 2);
 
   // 2. Project Columns
   colIdx = 3;
   reportData.value.projects.forEach(project => {
     if (project.is_default) {
-      // Default: Merge 1-6, show name
-      setCell(1, colIdx, project.name);
-      worksheet.mergeCells(1, colIdx, 6, colIdx);
+      // Default: Merge 3-8, show name
+      setCell(3, colIdx, project.name, { alignment: { vertical: 'bottom', horizontal: 'center', wrapText: true } });
+      worksheet.mergeCells(3, colIdx, 8, colIdx);
     } else {
       // Custom: 
-      // Row 1: Full Name/Name
-      setCell(1, colIdx, project.full_name || project.name);
+      // Row 3: Full Name/Name
+      setCell(3, colIdx, project.full_name || project.name, { alignment: { vertical: 'bottom', horizontal: 'center', wrapText: true } });
       
-      // Row 2-3: Chinese Name (Merge)
-      setCell(2, colIdx, project.chinese_name || '');
-      worksheet.mergeCells(2, colIdx, 3, colIdx);
+      // Row 4-5: Chinese Name (Merge)
+      setCell(4, colIdx, project.chinese_name || '', { alignment: { vertical: 'bottom', horizontal: 'center', wrapText: true } });
+      worksheet.mergeCells(4, colIdx, 5, colIdx);
       
-      // Row 4: ID
-      setCell(4, colIdx, `${project.custom_id || project.id}`);
+      // Row 6: ID
+      setCell(6, colIdx, `${project.custom_id || project.id}`, { alignment: { vertical: 'bottom', horizontal: 'center', wrapText: true } });
       
-      // Row 5-6: Date Range (Merge)
-      setCell(5, colIdx, formatDateRange(project.start_date, project.plan_closed_date));
-      worksheet.mergeCells(5, colIdx, 6, colIdx);
+      // Row 7-8: Date Range (Merge)
+      setCell(7, colIdx, formatDateRange(project.start_date, project.plan_closed_date), { alignment: { vertical: 'bottom', horizontal: 'center', wrapText: true } });
+      worksheet.mergeCells(7, colIdx, 8, colIdx);
 
       // Apply styles to the merged/unmerged cells in this column to ensure borders
-      for(let r=1; r<=6; r++) {
+      for(let r=3; r<=8; r++) {
          // Re-apply border to ensure merged cells look right
          const cell = worksheet.getCell(r, colIdx);
          cell.border = {
@@ -288,18 +352,26 @@ const exportReport = async () => {
             bottom: { style: 'thin' },
             right: { style: 'thin' }
          };
-         cell.alignment = { vertical: 'top', horizontal: 'center', wrapText: true };
+         // We already set alignment in setCell, but for merged cells we might need to be careful. 
+         // setCell sets it for the top-left cell of merge.
+         // This loop re-applies to all, which is fine/good for borders.
+         // For alignment, it should be on the master cell.
+         if (r === 3 || r === 4 || r === 6 || r === 7) {
+             // These are start of merges or single cells, already set by setCell
+         } else {
+             // For other cells in merge, alignment doesn't matter as much but borders do.
+         }
       }
     }
     colIdx++;
   });
 
-  // 3. Trailing Columns (Total Hours, etc.) - Merge 1-6
+  // 3. Trailing Columns (Total Hours, etc.) - Merge 3-8
   const trailingHeaders = ['Total Hours', 'Mark', 'Start Date', 'End Date'];
   trailingHeaders.forEach((text, i) => {
     const c = colIdx + i;
-    setCell(1, c, text);
-    worksheet.mergeCells(1, c, 6, c);
+    setCell(3, c, text, { alignment: { vertical: 'bottom', horizontal: 'center', wrapText: true } });
+    worksheet.mergeCells(3, c, 8, c);
   });
 
   // --- Data Rows ---
@@ -407,5 +479,21 @@ onMounted(() => {
 .project-header-line.time-range {
   font-size: 11px;
   color: #909399;
+}
+.report-table-header {
+  margin-bottom: 10px;
+}
+.report-title {
+  text-align: center;
+  margin: 0 0 10px 0;
+  font-size: 20px;
+  font-weight: bold;
+}
+.report-sub-header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: bold;
+  margin-bottom: 5px;
+  padding: 0 5px;
 }
 </style>

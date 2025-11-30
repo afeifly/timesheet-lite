@@ -9,7 +9,11 @@
       <el-table-column prop="id" label="ID" width="60" />
       <el-table-column prop="name" label="No. PJ Name" width="120" />
       <el-table-column prop="full_name" label="Full Name" width="150" />
-      <el-table-column prop="chinese_name" label="Chinese Name" width="120" />
+      <el-table-column label="Chinese Name" width="120">
+        <template #default="scope">
+          {{ scope.row.chinese_name || '&nbsp;' }}
+        </template>
+      </el-table-column>
       <el-table-column prop="custom_id" label="Project ID" width="100" />
       <el-table-column prop="status" label="Status" width="100">
         <template #default="scope">
