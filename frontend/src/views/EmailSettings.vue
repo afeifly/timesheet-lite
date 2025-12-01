@@ -31,6 +31,7 @@
         <el-form-item>
           <el-button type="primary" @click="saveSettings">Save Settings</el-button>
           <el-button type="success" @click="showTestDialog = true">Send Test Email</el-button>
+          <el-button type="warning" @click="checkTimesheetCompliance" :loading="checkingTimesheets">Test no finish timesheet</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -59,6 +60,7 @@ import { ElMessage } from 'element-plus'
 const loading = ref(false)
 const showTestDialog = ref(false)
 const sendingTest = ref(false)
+const checkingTimesheets = ref(false)
 
 const form = ref({
   smtp_server: '',
@@ -114,6 +116,18 @@ const sendTestEmail = async () => {
     ElMessage.error('Failed to send test email: ' + (error.response?.data?.detail || error.message))
   } finally {
     sendingTest.value = false
+  }
+}
+
+const checkTimesheetCompliance = async () => {
+  checkingTimesheets.value = true
+  try {
+    const response = await api.post('/settings/email/test-no-finish-timesheet')
+    ElMessage.success(response.data.message || 'Compliance check email sent')
+  } catch (error) {
+    ElMessage.error('Failed to check timesheets: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    checkingTimesheets.value = false
   }
 }
 

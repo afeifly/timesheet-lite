@@ -23,6 +23,7 @@
         <template #default="scope">
           <el-button size="small" @click="openEditDialog(scope.row)">Edit</el-button>
           <el-button 
+            v-if="scope.row.role !== 'admin'"
             type="primary" 
             size="small" 
             @click="openProjectDialog(scope.row)"
