@@ -13,7 +13,12 @@
     <div class="flex-grow" />
     
     <el-menu-item index="/">Dashboard</el-menu-item>
-    <el-menu-item index="/log-work">Log Work</el-menu-item>
+    <el-menu-item index="/log-work">
+      Log Work
+      <el-tooltip v-if="!isCompliant" content="Incomplete timesheets in last 2 weeks" placement="bottom">
+        <el-icon class="alarm-icon" @click.stop="handleAlarmClick"><Warning /></el-icon>
+      </el-tooltip>
+    </el-menu-item>
     
     <el-menu-item index="/projects">Projects</el-menu-item>
     <el-menu-item index="/employees">Employees</el-menu-item>
@@ -57,11 +62,12 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../api/axios'
 import { ElMessage } from 'element-plus'
+import { Warning } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -93,6 +99,31 @@ const changePassword = async () => {
     ElMessage.error('Failed to change password: ' + (error.response?.data?.detail || error.message))
   }
 }
+
+
+const isCompliant = ref(true)
+const firstIncompleteDate = ref(null)
+
+const checkCompliance = async () => {
+  if (!authStore.user) return
+  try {
+    const response = await api.get('/users/me/compliance')
+    isCompliant.value = response.data.compliant
+    firstIncompleteDate.value = response.data.first_incomplete_date
+  } catch (error) {
+    console.error('Failed to check compliance', error)
+  }
+}
+
+const handleAlarmClick = () => {
+  if (firstIncompleteDate.value) {
+    router.push({ path: '/log-work', query: { date: firstIncompleteDate.value } })
+  }
+}
+
+onMounted(() => {
+  checkCompliance()
+})
 </script>
 
 <style scoped>
@@ -103,5 +134,18 @@ const changePassword = async () => {
   font-weight: bold;
   font-size: 1.2em;
   color: #409EFF;
+}
+.alarm-icon {
+  color: #F56C6C;
+  margin-left: 5px;
+  font-size: 1.2em;
+  vertical-align: middle;
+  cursor: pointer;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
 }
 </style>

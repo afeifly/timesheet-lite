@@ -4,6 +4,10 @@ from app.database import get_session
 from app.models import User, Role, Project, UserProjectLink, ActivityLog
 from app.api.deps import get_current_admin_user, get_current_user
 from app.core.security import get_password_hash
+from app.services.email_service import check_timesheet_compliance
+from datetime import date, timedelta
+from sqlalchemy import func
+from app.models import Timesheet
 from pydantic import BaseModel, Field
 from datetime import datetime
 
@@ -125,6 +129,45 @@ def change_password(
     session.add(current_user)
     session.commit()
     return {"ok": True}
+
+@router.get("/me/compliance")
+def get_my_compliance(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    # Calculate date range (last 2 full weeks)
+    today = date.today()
+    start_of_current_week = today - timedelta(days=today.weekday())
+    start_date = start_of_current_week - timedelta(days=14)
+    end_date = start_of_current_week - timedelta(days=3) # Friday of last week
+    
+    first_incomplete_date = None
+    is_compliant = True
+    
+    current_check_date = start_date
+    while current_check_date <= end_date:
+        # Check only weekdays (Mon-Fri)
+        if current_check_date.weekday() < 5:
+            total_hours = session.exec(
+                select(func.sum(Timesheet.hours))
+                .where(Timesheet.user_id == current_user.id)
+                .where(Timesheet.date == current_check_date)
+            ).one()
+            
+            if total_hours is None:
+                total_hours = 0
+            
+            if total_hours < 8:
+                is_compliant = False
+                first_incomplete_date = current_check_date
+                break
+        
+        current_check_date += timedelta(days=1)
+        
+    return {
+        "compliant": is_compliant,
+        "first_incomplete_date": first_incomplete_date
+    }
 
 @router.post("/{user_id}/projects/{project_id}")
 def assign_project(

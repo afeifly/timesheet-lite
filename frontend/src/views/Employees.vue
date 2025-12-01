@@ -19,25 +19,31 @@
           <el-tag :type="scope.row.role === 'admin' ? 'danger' : 'success'">{{ scope.row.role }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column v-if="isAdmin" label="Actions" width="280" fixed="right">
+      <el-table-column v-if="isAdmin" label="Actions" width="200" fixed="right">
         <template #default="scope">
-          <el-button size="small" @click="openEditDialog(scope.row)">Edit</el-button>
-          <el-button 
-            v-if="scope.row.role !== 'admin'"
-            type="primary" 
-            size="small" 
-            @click="openProjectDialog(scope.row)"
-          >
-            Projects
-          </el-button>
-          <el-button 
-            v-if="scope.row.username !== authStore.user?.username" 
-            type="danger" 
-            size="small" 
-            @click="handleDelete(scope.row)"
-          >
-            Delete
-          </el-button>
+          <el-tooltip content="Edit" placement="top">
+            <el-button link type="primary" @click="openEditDialog(scope.row)">
+              <el-icon><Edit /></el-icon>
+            </el-button>
+          </el-tooltip>
+          
+          <el-tooltip v-if="scope.row.role !== 'admin'" content="Assign Projects" placement="top">
+            <el-button link type="primary" @click="openProjectDialog(scope.row)">
+              <el-icon><Folder /></el-icon>
+            </el-button>
+          </el-tooltip>
+
+          <el-tooltip v-if="scope.row.role !== 'admin'" content="Login As" placement="top">
+            <el-button link type="warning" @click="handleLoginAs(scope.row)">
+              <el-icon><Key /></el-icon>
+            </el-button>
+          </el-tooltip>
+
+          <el-tooltip v-if="scope.row.username !== authStore.user?.username" content="Delete" placement="top">
+            <el-button link type="danger" @click="handleDelete(scope.row)">
+              <el-icon><Delete /></el-icon>
+            </el-button>
+          </el-tooltip>
         </template>
       </el-table-column>
     </el-table>
@@ -126,6 +132,7 @@ import { ref, onMounted, computed } from 'vue'
 import api from '../api/axios'
 import { useAuthStore } from '../stores/auth'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Edit, Delete, Folder, Key } from '@element-plus/icons-vue'
 
 const authStore = useAuthStore()
 const isAdmin = computed(() => authStore.user?.role === 'admin')
@@ -247,6 +254,26 @@ const handleDelete = (user) => {
       }
     })
     .catch(() => {})
+}
+
+const handleLoginAs = async (user) => {
+  try {
+    const response = await api.post(`/auth/login-as/${user.id}`)
+    const { access_token, user: userData } = response.data
+    
+    // Update auth store
+    authStore.token = access_token
+    authStore.user = userData
+    localStorage.setItem('token', access_token)
+    localStorage.setItem('user', JSON.stringify(userData))
+    
+    ElMessage.success(`Logged in as ${user.username}`)
+    
+    // Redirect to home or refresh to update view
+    window.location.href = '/'
+  } catch (error) {
+    ElMessage.error('Failed to login as user: ' + (error.response?.data?.detail || error.message))
+  }
 }
 
 const openProjectDialog = async (user) => {

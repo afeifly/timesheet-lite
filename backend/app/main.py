@@ -31,6 +31,8 @@ app.include_router(settings.router, prefix="/settings", tags=["settings"])
 
 @app.on_event("startup")
 def on_startup():
+    from app.core.scheduler import start_scheduler
+    start_scheduler()
     create_db_and_tables()
     
     # Initialize default projects and admin user

@@ -24,7 +24,7 @@
                 <div :class="['header-total', { 'warning': getDailyTotal(index) !== 8 }]">
                   {{ getDailyTotal(index) }}h
                 </div>
-                <el-tag v-if="isDayVerified(index)" type="success" size="small" class="verify-badge">Verified</el-tag>
+                <el-tag v-if="isDayVerified(index)" type="success" size="small" class="verify-badge">Approved</el-tag>
               </div>
               </div>
 
@@ -86,7 +86,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../api/axios'
 import { ElMessage } from 'element-plus'
@@ -94,9 +95,19 @@ import dayjs from 'dayjs'
 
 const authStore = useAuthStore()
 const saving = ref(false)
+const route = useRoute()
+const router = useRouter()
 
 const currentDate = ref(dayjs())
 const projects = ref([])
+
+// Watch for query param changes to update date
+watch(() => route.query.date, (newDate) => {
+  if (newDate) {
+    currentDate.value = dayjs(newDate)
+    fetchData()
+  }
+}, { immediate: true })
 const timesheets = ref([])
 const projectRows = ref([])
 

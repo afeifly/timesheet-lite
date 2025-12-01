@@ -32,6 +32,7 @@
           <el-button type="primary" @click="saveSettings">Save Settings</el-button>
           <el-button type="success" @click="showTestDialog = true">Send Test Email</el-button>
           <el-button type="warning" @click="checkTimesheetCompliance" :loading="checkingTimesheets">Test no finish timesheet</el-button>
+          <el-button type="danger" @click="checkApprovalCompliance" :loading="checkingApprovals">Test no approval notify</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -61,6 +62,7 @@ const loading = ref(false)
 const showTestDialog = ref(false)
 const sendingTest = ref(false)
 const checkingTimesheets = ref(false)
+const checkingApprovals = ref(false)
 
 const form = ref({
   smtp_server: '',
@@ -128,6 +130,18 @@ const checkTimesheetCompliance = async () => {
     ElMessage.error('Failed to check timesheets: ' + (error.response?.data?.detail || error.message))
   } finally {
     checkingTimesheets.value = false
+  }
+}
+
+const checkApprovalCompliance = async () => {
+  checkingApprovals.value = true
+  try {
+    const response = await api.post('/settings/email/test-no-approval-notify')
+    ElMessage.success(response.data.message || 'Approval check email sent')
+  } catch (error) {
+    ElMessage.error('Failed to check approvals: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    checkingApprovals.value = false
   }
 }
 

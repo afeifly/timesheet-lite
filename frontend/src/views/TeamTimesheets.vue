@@ -33,8 +33,8 @@
                 <div :class="['header-total', { 'warning': getDailyTotal(index) > 8 }]">
                   {{ getDailyTotal(index) }}h
                 </div>
-                <el-tag v-if="isDayVerified(index)" type="success" size="small" class="verify-badge">Verified</el-tag>
-                <el-tag v-else type="info" size="small" class="verify-badge">Unverified</el-tag>
+                <el-tag v-if="isDayVerified(index)" type="success" size="small" class="verify-badge">Approved</el-tag>
+                <el-tag v-else type="info" size="small" class="verify-badge">Unapproved</el-tag>
               </div>
             </div>
             <div class="total-header">Total</div>
@@ -68,7 +68,7 @@
           </div>
 
           <div class="actions">
-            <el-button type="primary" size="large" @click="saveTimesheet" :loading="saving">Save & Verify</el-button>
+            <el-button type="primary" size="large" @click="saveTimesheet" :loading="saving">Save & Approve</el-button>
           </div>
         </el-card>
       </el-main>
@@ -269,7 +269,7 @@ const saveTimesheet = async () => {
       })
     }
     await Promise.all(promises)
-    ElMessage.success('Timesheet saved and verified where applicable')
+    ElMessage.success('Timesheet saved and approved where applicable')
     fetchData()
   } catch (error) {
     ElMessage.error('Failed to save: ' + (error.response?.data?.detail || error.message))
