@@ -13,12 +13,16 @@
     <div class="flex-grow" />
     
     <el-menu-item index="/">Dashboard</el-menu-item>
-    <el-menu-item index="/log-work">
-      Log Work
-      <el-tooltip v-if="!isCompliant" content="Incomplete timesheets in last 2 weeks" placement="bottom">
-        <el-icon class="alarm-icon" @click.stop="handleAlarmClick"><Warning /></el-icon>
-      </el-tooltip>
-    </el-menu-item>
+    <template v-if="!authStore.isAdmin">
+      <el-menu-item index="/log-work">
+        <span>Log Work</span>
+        <el-icon v-if="!isCompliant" class="alarm-icon" @click.stop="handleAlarmClick">
+          <el-tooltip content="Incomplete timesheets in last 2 weeks" placement="bottom">
+            <Warning />
+          </el-tooltip>
+        </el-icon>
+      </el-menu-item>
+    </template>
     
     <el-menu-item index="/projects">Projects</el-menu-item>
     <el-menu-item index="/employees">Employees</el-menu-item>
@@ -29,7 +33,14 @@
     </template>
     
     <template v-if="authStore.user?.role === 'team_leader'">
-      <el-menu-item index="/team-timesheets">Team Timesheets</el-menu-item>
+      <el-menu-item index="/team-timesheets">
+        <span>Team Timesheets</span>
+        <el-icon v-if="hasPendingApprovals" class="alarm-icon" @click.stop="handleTeamAlarmClick">
+          <el-tooltip content="Pending approvals from your team" placement="bottom">
+            <Warning />
+          </el-tooltip>
+        </el-icon>
+      </el-menu-item>
     </template>
 
     <el-sub-menu index="user" v-if="authStore.user">
@@ -62,7 +73,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../api/axios'
@@ -103,6 +114,7 @@ const changePassword = async () => {
 
 const isCompliant = ref(true)
 const firstIncompleteDate = ref(null)
+const hasPendingApprovals = ref(false)
 
 const checkCompliance = async () => {
   if (!authStore.user) return
@@ -115,14 +127,36 @@ const checkCompliance = async () => {
   }
 }
 
+const checkPendingApprovals = async () => {
+  if (!authStore.user || authStore.user.role !== 'team_leader') return
+  try {
+    const response = await api.get('/users/me/pending-approvals')
+    hasPendingApprovals.value = response.data.has_pending
+  } catch (error) {
+    console.error('Failed to check pending approvals', error)
+  }
+}
+
 const handleAlarmClick = () => {
   if (firstIncompleteDate.value) {
     router.push({ path: '/log-work', query: { date: firstIncompleteDate.value } })
   }
 }
 
+const handleTeamAlarmClick = () => {
+  router.push('/team-timesheets')
+}
+
 onMounted(() => {
   checkCompliance()
+  checkPendingApprovals()
+  
+  // Listen for refresh events from TeamTimesheets
+  window.addEventListener('refresh-pending-approvals', checkPendingApprovals)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('refresh-pending-approvals', checkPendingApprovals)
 })
 </script>
 

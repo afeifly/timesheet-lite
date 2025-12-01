@@ -169,6 +169,26 @@ def get_my_compliance(
         "first_incomplete_date": first_incomplete_date
     }
 
+@router.get("/me/pending-approvals")
+def get_pending_approvals(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    # Only for team leaders
+    if current_user.role != Role.TEAM_LEADER:
+        return {"has_pending": False}
+    
+    # Check if any employee has unapproved timesheets
+    has_pending = session.exec(
+        select(Timesheet)
+        .join(User)
+        .where(User.team_leader_id == current_user.id)
+        .where(Timesheet.hours > 0)
+        .where(Timesheet.verify == False)
+    ).first()
+    
+    return {"has_pending": has_pending is not None}
+
 @router.post("/{user_id}/projects/{project_id}")
 def assign_project(
     user_id: int,

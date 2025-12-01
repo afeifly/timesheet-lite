@@ -271,6 +271,9 @@ const saveTimesheet = async () => {
     await Promise.all(promises)
     ElMessage.success('Timesheet saved and approved where applicable')
     fetchData()
+    
+    // Trigger refresh of pending approvals alert in NavBar
+    window.dispatchEvent(new CustomEvent('refresh-pending-approvals'))
   } catch (error) {
     ElMessage.error('Failed to save: ' + (error.response?.data?.detail || error.message))
   } finally {
