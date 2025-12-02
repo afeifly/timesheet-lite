@@ -62,6 +62,19 @@
             </el-collapse-item>
           </el-collapse>
         </section>
+
+        <el-divider />
+
+        <section>
+          <h3>System Diagrams</h3>
+          <el-collapse>
+            <el-collapse-item title="Timesheet Approval Workflow" name="7">
+              <div class="diagram-container">
+                <img src="https://mermaid.ink/img/CnNlcXVlbmNlRGlhZ3JhbQogICAgcGFydGljaXBhbnQgRSBhcyBFbXBsb3llZQogICAgcGFydGljaXBhbnQgUyBhcyBTeXN0ZW0KICAgIHBhcnRpY2lwYW50IFRMIGFzIFRlYW0gTGVhZGVyCiAgICAKICAgIEUtPj5TOiBMb2cgV29yayAoOCBob3VycykKICAgIFMtLT4+RTogQ29uZmlybSBFbnRyeQogICAgUy0+PlRMOiBOb3RpZnkgUGVuZGluZyBBcHByb3ZhbCAoRW1haWwpCiAgICBUTC0+PlM6IFZlcmlmeSBUaW1lc2hlZXQKICAgIFMtLT4+RTogTm90aWZ5IEFwcHJvdmVkCg==" alt="Timesheet Workflow Diagram" />
+              </div>
+            </el-collapse-item>
+          </el-collapse>
+        </section>
       </div>
     </el-card>
   </div>
@@ -91,5 +104,15 @@ const activeNames = ref(['1', '2', '3', '4', '5'])
 }
 section {
   margin-bottom: 20px;
+}
+.diagram-container {
+  text-align: center;
+  padding: 20px;
+  background: #f9f9f9;
+  border-radius: 4px;
+}
+.diagram-container img {
+  max-width: 100%;
+  height: auto;
 }
 </style>
