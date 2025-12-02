@@ -31,6 +31,9 @@ const fetchLogs = async () => {
 }
 
 const formatDate = (date) => {
+  if (!date.endsWith('Z')) {
+    date += 'Z'
+  }
   return dayjs(date).format('YYYY-MM-DD HH:mm:ss')
 }
 

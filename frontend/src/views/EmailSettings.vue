@@ -28,10 +28,17 @@
           <el-input v-model="form.sender_email" placeholder="noreply@example.com" />
         </el-form-item>
         
+        <el-form-item label="Checking Service">
+          <el-switch v-model="form.checking_service_enabled" active-text="Enable (Every Monday 10 AM)" />
+        </el-form-item>
+
         <el-form-item>
           <el-button type="primary" @click="saveSettings">Save Settings</el-button>
           <el-button type="success" @click="showTestDialog = true">Send Test Email</el-button>
-          <el-button type="warning" @click="checkTimesheetCompliance" :loading="checkingTimesheets">Test no finish timesheet</el-button>
+        </el-form-item>
+
+        <el-form-item>
+          <el-button type="warning" @click="checkTimesheetCompliance" :loading="checkingTimesheets">Test no finish timesheet notify</el-button>
           <el-button type="danger" @click="checkApprovalCompliance" :loading="checkingApprovals">Test no approval notify</el-button>
         </el-form-item>
       </el-form>
@@ -69,7 +76,8 @@ const form = ref({
   smtp_port: 587,
   smtp_username: '',
   smtp_password: '',
-  sender_email: ''
+  sender_email: '',
+  checking_service_enabled: false
 })
 
 const testForm = ref({

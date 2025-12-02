@@ -1,6 +1,6 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from app.database import engine
-from sqlmodel import Session
+from sqlmodel import Session, select
 from app.services.email_service import check_timesheet_compliance, check_approval_compliance
 import logging
 
@@ -9,15 +9,25 @@ logging.getLogger('apscheduler').setLevel(logging.DEBUG)
 
 def run_timesheet_check():
     with Session(engine) as session:
-        print("Running scheduled timesheet compliance check...")
-        result = check_timesheet_compliance(session)
-        print(f"Timesheet check result: {result}")
+        from app.models import SMTPSettings
+        settings = session.exec(select(SMTPSettings)).first()
+        if settings and settings.checking_service_enabled:
+            print("Running scheduled timesheet compliance check...")
+            result = check_timesheet_compliance(session)
+            print(f"Timesheet check result: {result}")
+        else:
+            print("Skipping scheduled timesheet check (disabled)")
 
 def run_approval_check():
     with Session(engine) as session:
-        print("Running scheduled approval compliance check...")
-        result = check_approval_compliance(session)
-        print(f"Approval check result: {result}")
+        from app.models import SMTPSettings
+        settings = session.exec(select(SMTPSettings)).first()
+        if settings and settings.checking_service_enabled:
+            print("Running scheduled approval compliance check...")
+            result = check_approval_compliance(session)
+            print(f"Approval check result: {result}")
+        else:
+            print("Skipping scheduled approval check (disabled)")
 
 def start_scheduler():
     scheduler = BackgroundScheduler()

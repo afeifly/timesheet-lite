@@ -1,5 +1,5 @@
 from typing import Optional, List
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from sqlmodel import Field, SQLModel, Relationship
 from enum import Enum
 
@@ -20,6 +20,7 @@ class SMTPSettings(SQLModel, table=True):
     smtp_username: str
     smtp_password: str
     sender_email: str
+    checking_service_enabled: bool = Field(default=False)
 
 
 class UserProjectLink(SQLModel, table=True):
@@ -84,6 +85,6 @@ class ActivityLog(SQLModel, table=True):
     user_id: int = Field(foreign_key="user.id")
     action: str
     details: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     user: User = Relationship(back_populates="activity_logs")

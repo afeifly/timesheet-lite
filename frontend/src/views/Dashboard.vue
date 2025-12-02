@@ -178,6 +178,9 @@ const fetchUserStats = async () => {
 }
 
 const formatDate = (date) => {
+  if (!date.endsWith('Z')) {
+    date += 'Z'
+  }
   return dayjs(date).fromNow()
 }
 
