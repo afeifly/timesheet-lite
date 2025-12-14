@@ -23,6 +23,7 @@
         </el-icon>
       </el-menu-item>
     </template>
+
     
     <el-menu-item index="/projects">Projects</el-menu-item>
     <el-menu-item index="/employees">Employees</el-menu-item>

@@ -68,7 +68,7 @@
           </div>
 
           <div class="actions">
-            <el-button type="primary" size="large" @click="saveTimesheet" :loading="saving">Save & Approve</el-button>
+            <el-button type="primary" size="large" @click="saveTimesheet" :loading="saving" :disabled="!canApprove">Approve</el-button>
           </div>
         </el-card>
       </el-main>
@@ -119,6 +119,12 @@ const isCurrentWeek = computed(() => {
   return startOfDisplayedWeek.isSame(startOfCurrentWeek, 'day') || startOfDisplayedWeek.isAfter(startOfCurrentWeek)
 })
 
+const canApprove = computed(() => {
+  // Check if every day (Mon-Fri) has exactly 8 hours
+  // weekDays contains 5 days (Mon-Fri)
+  return weekDays.value.every((_, index) => getDailyTotal(index) === 8)
+})
+
 const fetchEmployees = async () => {
   try {
     const response = await api.get('/users/')
@@ -132,17 +138,16 @@ const fetchEmployees = async () => {
     // Let's filter on frontend.
     const myId = authStore.user?.id
     if (myId) {
-        employees.value = response.data.filter(u => u.team_leader_id === myId || u.id === myId)
-        // Default select myself if I'm in the list and nothing selected yet
-        if (!selectedEmployeeId.value) {
-            const myself = employees.value.find(e => e.id === myId)
-            if (myself) {
-                selectedEmployeeId.value = myself.id
-                // We need to trigger fetchData manually or wait for watcher if we had one. 
-                // Since we don't have a watcher on selectedEmployeeId that calls fetchData automatically (we only have handleEmployeeSelect),
-                // we should call fetchData here.
-                fetchData()
-            }
+        employees.value = response.data.filter(u => u.team_leader_id === myId)
+        // Check if previously selected employee is still in list
+        if (selectedEmployeeId.value && !employees.value.find(e => e.id == selectedEmployeeId.value)) {
+            selectedEmployeeId.value = null
+        }
+        
+        // Default select first employee if available and nothing selected
+        if (!selectedEmployeeId.value && employees.value.length > 0) {
+           selectedEmployeeId.value = employees.value[0].id
+           fetchData()
         }
     }
   } catch (error) {

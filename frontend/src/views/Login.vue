@@ -7,7 +7,7 @@
           <el-input v-model="form.username" />
         </el-form-item>
         <el-form-item label="Password">
-          <el-input v-model="form.password" type="password" @keyup.enter="handleLogin" />
+          <el-input v-model="form.password" type="password" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleLogin">Login</el-button>
@@ -35,7 +35,12 @@ const handleLogin = async () => {
   try {
     await authStore.login(form.value.username, form.value.password)
     ElMessage.success('Login successful')
-    router.push('/')
+    
+    if (authStore.isAdmin) {
+        router.push('/')
+    } else {
+        router.push('/log-work')
+    }
   } catch (error) {
     ElMessage.error('Login failed: ' + (error.response?.data?.detail || error.message))
   }

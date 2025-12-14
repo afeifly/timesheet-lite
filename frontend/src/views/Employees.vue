@@ -2,7 +2,7 @@
   <div class="employees-container">
     <div class="header">
       <h2>Employees Management</h2>
-      <el-button v-if="isAdmin" type="primary" @click="openCreateDialog">Add Employee</el-button>
+      <el-button v-if="canManageUsers" type="primary" @click="openCreateDialog">Add Employee</el-button>
     </div>
 
     <el-table :data="users" style="width: 100%">
@@ -19,27 +19,32 @@
           <el-tag :type="scope.row.role === 'admin' ? 'danger' : 'success'">{{ scope.row.role }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column v-if="isAdmin" label="Actions" width="200" fixed="right">
+      <el-table-column v-if="canManageUsers" label="Actions" width="200" fixed="right">
         <template #default="scope">
           <el-tooltip content="Edit" placement="top">
-            <el-button link type="primary" @click="openEditDialog(scope.row)">
+            <el-button 
+              link 
+              type="primary" 
+              @click="openEditDialog(scope.row)"
+              v-if="isAdmin || (isTeamLeader && scope.row.role === 'employee')"
+            >
               <el-icon><Edit /></el-icon>
             </el-button>
           </el-tooltip>
           
-          <el-tooltip v-if="scope.row.role !== 'admin'" content="Assign Projects" placement="top">
+          <el-tooltip v-if="canAssignProjects(scope.row)" content="Assign Projects" placement="top">
             <el-button link type="primary" @click="openProjectDialog(scope.row)">
               <el-icon><Folder /></el-icon>
             </el-button>
           </el-tooltip>
 
-          <el-tooltip v-if="scope.row.role !== 'admin'" content="Login As" placement="top">
+          <el-tooltip v-if="canLoginAs(scope.row)" content="Login As" placement="top">
             <el-button link type="warning" @click="handleLoginAs(scope.row)">
               <el-icon><Key /></el-icon>
             </el-button>
           </el-tooltip>
 
-          <el-tooltip v-if="scope.row.username !== authStore.user?.username" content="Delete" placement="top">
+          <el-tooltip v-if="canDelete(scope.row)" content="Delete" placement="top">
             <el-button link type="danger" @click="handleDelete(scope.row)">
               <el-icon><Delete /></el-icon>
             </el-button>
@@ -78,13 +83,14 @@
           <el-input v-model="form.password" type="password" />
         </el-form-item>
         <el-form-item label="Role">
-          <el-select v-model="form.role" placeholder="Select role">
+          <el-select v-model="form.role" placeholder="Select role" v-if="isAdmin">
             <el-option label="Employee" value="employee" />
             <el-option label="Team Leader" value="team_leader" />
             <el-option label="Admin" value="admin" />
           </el-select>
+          <el-input v-else model-value="Employee" disabled />
         </el-form-item>
-        <el-form-item label="Team Leader" v-if="form.role === 'employee'">
+        <el-form-item label="Team Leader" v-if="['employee', 'team_leader'].includes(form.role)">
           <el-select v-model="form.team_leader_id" placeholder="Select Team Leader" clearable>
             <el-option 
               v-for="tl in teamLeaders" 
@@ -136,6 +142,9 @@ import { Edit, Delete, Folder, Key } from '@element-plus/icons-vue'
 
 const authStore = useAuthStore()
 const isAdmin = computed(() => authStore.user?.role === 'admin')
+const isTeamLeader = computed(() => authStore.user?.role === 'team_leader')
+const canManageUsers = computed(() => isAdmin.value || isTeamLeader.value)
+
 const users = ref([])
 const teamLeaders = computed(() => users.value.filter(u => u.role === 'team_leader'))
 const allProjects = ref([])
@@ -144,6 +153,31 @@ const showProjectDialog = ref(false)
 const isEditing = ref(false)
 const selectedUser = ref(null)
 const selectedProjects = ref([])
+
+const isSubordinate = (user) => {
+  return isTeamLeader.value && user.team_leader_id === authStore.user?.id
+}
+
+const canAssignProjects = (user) => {
+  if (isAdmin.value) return user.role !== 'admin'
+  if (isTeamLeader.value) return isSubordinate(user)
+  return false
+}
+
+const canLoginAs = (user) => {
+  // Only Admins can login as other users
+  if (isAdmin.value) return user.role !== 'admin'
+  return false
+}
+
+const canDelete = (user) => {
+  if (user.username === authStore.user?.username) return false
+  if (isAdmin.value) return true
+  // TLs probably shouldn't delete users, but if they created them...
+  // User prompt didn't ask for delete rights, just 'add' and 'edit'.
+  // I'll hide delete for TLs to be safe/conservative as per earlier plan.
+  return false 
+}
 
 const form = ref({
   username: '',
@@ -191,7 +225,7 @@ const openCreateDialog = () => {
     password: '',
     end_date: null,
     password: '',
-    role: 'employee',
+    role: isAdmin.value ? 'employee' : 'employee', // Default to employee
     team_leader_id: null
   }
   showCreateDialog.value = true

@@ -29,8 +29,15 @@ def read_users(
 def create_user(
     user: User,
     session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_user),
 ):
+    # Permission check
+    if current_user.role != Role.ADMIN and current_user.role != Role.TEAM_LEADER:
+        raise HTTPException(status_code=403, detail="Not authorized to create users")
+    
+    if current_user.role == Role.TEAM_LEADER and user.role != Role.EMPLOYEE:
+        raise HTTPException(status_code=403, detail="Team Leaders can only create Employees")
+
     existing_user = session.exec(select(User).where(User.username == user.username)).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Username already registered")
@@ -81,11 +88,28 @@ def update_user(
     user_id: int,
     user_update: User,
     session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_user),
 ):
     db_user = session.get(User, user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Permission check
+    is_admin = current_user.role == Role.ADMIN
+    is_team_leader = current_user.role == Role.TEAM_LEADER
+    
+    if not is_admin and not is_team_leader:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    if is_team_leader:
+        # Check target user role
+        if db_user.role != Role.EMPLOYEE:
+             raise HTTPException(status_code=403, detail="Team Leaders can only edit Employees")
+        
+        # Check if trying to change role
+        user_data_check = user_update.dict(exclude_unset=True)
+        if 'role' in user_data_check and user_data_check['role'] != Role.EMPLOYEE:
+             raise HTTPException(status_code=403, detail="Team Leaders cannot change user roles")
         
     user_data = user_update.dict(exclude_unset=True, exclude={'id', 'password_hash'})
     
@@ -288,3 +312,76 @@ def get_user_projects(
         raise HTTPException(status_code=403, detail="Not authorized to view these projects")
         
     return user.projects
+
+class ManagerUpdate(BaseModel):
+    manager_id: int
+
+@router.put("/{user_id}/manager", response_model=User)
+def update_user_manager(
+    user_id: int,
+    manager_data: ManagerUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update the manager (team leader) for a user.
+    Permissions:
+    - Admin: Can assign manager for any user.
+    - Team Leader:
+        - Can assign a manager for THEMSELVES (Self-management).
+        - Can assign a manager for their current subordinates (Transfer).
+    """
+    # 1. Get the target user
+    db_user = session.get(User, user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # 2. Get the new manager
+    new_manager = session.get(User, manager_data.manager_id)
+    if not new_manager:
+        raise HTTPException(status_code=404, detail="New manager not found")
+    
+    if new_manager.role != Role.TEAM_LEADER and new_manager.role != Role.ADMIN:
+        # Note: Usually managers are Team Leaders. Admins can also be managers technically if logic allows, 
+        # but the request specifically focuses on Team Leader hierarchy. 
+        # For safety/strictness based on "designate a team leader", we enforce TL role (or potential Admin if acts as TL).
+        # Let's stick to 'must be TEAM_LEADER' based on 'designate a team leader'.
+        if new_manager.role != Role.TEAM_LEADER:
+             raise HTTPException(status_code=400, detail="Selected user is not a Team Leader")
+
+    # 3. Check Permissions
+    is_admin = current_user.role == Role.ADMIN
+    is_self = current_user.id == user_id
+    # Is the current user the EXISTING manager of the target user?
+    is_current_manager = (
+        current_user.role == Role.TEAM_LEADER 
+        and db_user.team_leader_id == current_user.id
+    )
+
+    if not (is_admin or (is_self and current_user.role == Role.TEAM_LEADER) or is_current_manager):
+        raise HTTPException(status_code=403, detail="Not authorized to assign manager for this user")
+    
+    # 4. Prevent circular dependency (Basic check: A cannot report to A, A cannot report to someone who reports to A)
+    # Simple check: User cannot be their own manager
+    if db_user.id == new_manager.id:
+        raise HTTPException(status_code=400, detail="Cannot be your own manager")
+        
+    # Deeper circular check could be implemented here (A->B->A), skipping for now as per plan/req unless complexity needed.
+
+    old_manager_id = db_user.team_leader_id
+    db_user.team_leader_id = new_manager.id
+    
+    session.add(db_user)
+    session.commit()
+    session.refresh(db_user)
+    
+    # Log activity
+    log = ActivityLog(
+        user_id=current_user.id, 
+        action="UPDATE_MANAGER", 
+        details=f"Changed manager for {db_user.username} from ID {old_manager_id} to {new_manager.username}"
+    )
+    session.add(log)
+    session.commit()
+    
+    return db_user

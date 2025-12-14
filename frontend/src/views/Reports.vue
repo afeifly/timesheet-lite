@@ -28,24 +28,38 @@
                 <el-button @click="navigate(1)" :disabled="reportType === 'custom' || isNextDisabled">&gt;</el-button>
               </el-button-group>
               
-              <el-date-picker
-                v-model="dateRange"
-                type="daterange"
-                range-separator="To"
-                start-placeholder="Start date"
-                end-placeholder="End date"
-                format="YYYY-MM-DD"
-                value-format="YYYY-MM-DD"
-                @change="handleDateChange"
-              />
+              <div class="date-pickers">
+                <el-date-picker
+                  v-model="startDate"
+                  type="date"
+                  placeholder="Start date"
+                  format="YYYY-MM-DD"
+                  value-format="YYYY-MM-DD"
+                  @change="handleDateChange"
+                  :disabled="reportType !== 'custom'"
+                  style="width: 140px"
+                />
+                <span class="separator">To</span>
+                <el-date-picker
+                  v-model="endDate"
+                  type="date"
+                  placeholder="End date"
+                  format="YYYY-MM-DD"
+                  value-format="YYYY-MM-DD"
+                  @change="handleDateChange"
+                  :disabled="reportType !== 'custom'"
+                  style="width: 140px"
+                />
+              </div>
               
-              <el-button-group>
+              <el-button-group v-if="!isEmployee">
                 <el-button :type="reportType === 'month' ? 'primary' : ''" @click="setMonth">Monthly</el-button>
                 <el-button :type="reportType === 'year' ? 'primary' : ''" @click="setYear">Yearly</el-button>
+                <el-button :type="reportType === 'custom' ? 'primary' : ''" @click="setCustom">Custom</el-button>
               </el-button-group>
             </div>
           </div>
-          <el-button type="primary" @click="exportReport">Export Excel</el-button>
+          <el-button type="primary" @click="exportReport" v-if="!isEmployee">Export Excel</el-button>
         </div>
       </template>
       
@@ -111,29 +125,32 @@ import { useAuthStore } from '../stores/auth'
 
 const authStore = useAuthStore()
 const isAdmin = computed(() => authStore.user?.role === 'admin')
+const isEmployee = computed(() => authStore.user?.role === 'employee')
 
 const stats = ref({ total_users: 0, total_projects: 0 })
 const reportData = ref({ users: [], projects: [] })
 
-const dateRange = ref([])
+const dateRange = ref([]) // Deprecated/Unused now, but cleaning up refs below
+const startDate = ref('')
+const endDate = ref('')
 const reportType = ref('custom') // 'custom', 'month', 'year'
 
 const headerDateRange = computed(() => {
-  if (!dateRange.value || dateRange.value.length !== 2) return ''
-  return `${dateRange.value[0]} ~ ${dateRange.value[1]}`
+  if (!startDate.value || !endDate.value) return ''
+  return `${startDate.value} ~ ${endDate.value}`
 })
 
-const formatDateRange = (startDate, endDate) => {
-  if (!startDate && !endDate) return ''
-  if (!startDate) return `~ ${endDate}`
-  if (!endDate) return `${startDate} ~`
-  return `${startDate} ~ ${endDate}`
+const formatDateRange = (start, end) => {
+  if (!start && !end) return ''
+  if (!start) return `~ ${end}`
+  if (!end) return `${start} ~`
+  return `${start} ~ ${end}`
 }
 
 const isNextDisabled = computed(() => {
-  if (reportType.value === 'custom' || !dateRange.value || dateRange.value.length !== 2) return true
+  if (reportType.value === 'custom' || !startDate.value || !endDate.value) return true
   
-  const start = dayjs(dateRange.value[0])
+  const start = dayjs(startDate.value)
   const today = dayjs()
   
   if (reportType.value === 'month') {
@@ -159,9 +176,9 @@ const fetchStats = async () => {
 const fetchReport = async () => {
   try {
     const params = {}
-    if (dateRange.value && dateRange.value.length === 2) {
-      params.start_date = dateRange.value[0]
-      params.end_date = dateRange.value[1]
+    if (startDate.value && endDate.value) {
+      params.start_date = startDate.value
+      params.end_date = endDate.value
     } else {
       // Default to wide range if no date selected, or maybe current month?
       // User said "give a time select... it will give a range for the report"
@@ -171,8 +188,9 @@ const fetchReport = async () => {
       params.start_date = start
       params.end_date = end
       // Also update UI to reflect this default
-      if (!dateRange.value || dateRange.value.length === 0) {
-          dateRange.value = [start, end]
+      if (!startDate.value || !endDate.value) {
+          startDate.value = start
+          endDate.value = end
           reportType.value = 'month'
       }
     }
@@ -192,7 +210,8 @@ const handleDateChange = () => {
 const setMonth = () => {
   const start = dayjs().startOf('month').format('YYYY-MM-DD')
   const end = dayjs().endOf('month').format('YYYY-MM-DD')
-  dateRange.value = [start, end]
+  startDate.value = start
+  endDate.value = end
   reportType.value = 'month'
   fetchReport()
 }
@@ -200,16 +219,23 @@ const setMonth = () => {
 const setYear = () => {
   const start = dayjs().startOf('year').format('YYYY-MM-DD')
   const end = dayjs().endOf('year').format('YYYY-MM-DD')
-  dateRange.value = [start, end]
+  startDate.value = start
+  endDate.value = end
   reportType.value = 'year'
   fetchReport()
 }
 
-const navigate = (direction) => {
-  if (reportType.value === 'custom' || !dateRange.value || dateRange.value.length !== 2) return
+const setCustom = () => {
+  reportType.value = 'custom'
+  // We don't necessarily need to clear the date range, or we can leave it as is.
+  // The user will then naturally pick a date.
+}
 
-  let start = dayjs(dateRange.value[0])
-  let end = dayjs(dateRange.value[1])
+const navigate = (direction) => {
+  if (reportType.value === 'custom' || !startDate.value || !endDate.value) return
+
+  let start = dayjs(startDate.value)
+  let end = dayjs(endDate.value)
 
   if (reportType.value === 'month') {
     start = start.add(direction, 'month').startOf('month')
@@ -224,7 +250,8 @@ const navigate = (direction) => {
       return
   }
 
-  dateRange.value = [start.format('YYYY-MM-DD'), end.format('YYYY-MM-DD')]
+  startDate.value = start.format('YYYY-MM-DD')
+  endDate.value = end.format('YYYY-MM-DD')
   fetchReport()
 }
 
@@ -495,5 +522,14 @@ onMounted(() => {
   font-weight: bold;
   margin-bottom: 5px;
   padding: 0 5px;
+}
+.date-pickers {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.separator {
+  color: #606266;
+  font-size: 14px;
 }
 </style>
