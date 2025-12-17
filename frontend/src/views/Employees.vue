@@ -66,9 +66,21 @@
         </el-form-item>
         <el-form-item label="Cost Center">
           <el-select v-model="form.cost_center" placeholder="Select Cost Center">
-            <el-option label="R&D-XA" value="R&D-XA" />
-            <el-option label="R&D-SZ" value="R&D-SZ" />
+            <el-option 
+              v-for="cc in costCenters" 
+              :key="cc" 
+              :label="cc" 
+              :value="cc" 
+            />
           </el-select>
+          <el-button 
+            v-if="isAdmin" 
+            type="text" 
+            style="margin-left: 10px;"
+            @click="showCostCenterDialog = true"
+          >
+            Manage
+          </el-button>
         </el-form-item>
         <el-form-item label="Mark">
           <el-input v-model="form.remark" />
@@ -131,6 +143,32 @@
       </template>
     </el-dialog>
   </div>
+    <el-dialog v-model="showCostCenterDialog" title="Manage Cost Centers" width="500px">
+      <div style="margin-bottom: 20px; display: flex; gap: 10px;">
+        <el-input v-model="newCostCenter" placeholder="New Cost Center Name" />
+        <el-button type="primary" @click="addCostCenter" :disabled="!newCostCenter">Add</el-button>
+      </div>
+      <el-table :data="costCentersTable" style="width: 100%" max-height="400">
+        <el-table-column prop="name" label="Name" />
+        <el-table-column label="Action" width="100" align="right">
+          <template #default="scope">
+            <el-button 
+              type="danger" 
+              link 
+              :disabled="costCenters.length <= 1"
+              @click="deleteCostCenter(scope.row.name)"
+            >
+              <el-icon><Delete /></el-icon>
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="showCostCenterDialog = false">Close</el-button>
+        </span>
+      </template>
+    </el-dialog>
 </template>
 
 <script setup>
@@ -153,6 +191,11 @@ const showProjectDialog = ref(false)
 const isEditing = ref(false)
 const selectedUser = ref(null)
 const selectedProjects = ref([])
+
+const costCenters = ref([])
+const showCostCenterDialog = ref(false)
+const newCostCenter = ref('')
+const costCentersTable = computed(() => costCenters.value.map(c => ({ name: c })))
 
 const isSubordinate = (user) => {
   return isTeamLeader.value && user.team_leader_id === authStore.user?.id
@@ -350,10 +393,43 @@ const saveProjectAssignments = async () => {
   }
 }
 
+
+const fetchCostCenters = async () => {
+  try {
+    const response = await api.get('/cost-centers/')
+    costCenters.value = response.data
+  } catch (error) {
+    console.error('Failed to fetch cost centers')
+  }
+}
+
+const addCostCenter = async () => {
+  if (!newCostCenter.value) return
+  try {
+    const response = await api.post('/cost-centers/', { name: newCostCenter.value })
+    costCenters.value = response.data
+    newCostCenter.value = ''
+    ElMessage.success('Cost Center added')
+  } catch (error) {
+    ElMessage.error('Failed to add cost center')
+  }
+}
+
+const deleteCostCenter = async (name) => {
+  try {
+    const response = await api.delete(`/cost-centers/${name}`)
+    costCenters.value = response.data
+    ElMessage.success('Cost Center deleted')
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || 'Failed to delete cost center')
+  }
+}
 onMounted(() => {
   fetchUsers()
   fetchProjects()
+  fetchCostCenters()
 })
+
 </script>
 
 <style scoped>

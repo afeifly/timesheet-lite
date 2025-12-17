@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import create_db_and_tables, get_session, engine
-from app.api import auth, projects, timesheets, reports, activity_logs, users, settings
+from app.api import auth, projects, timesheets, reports, activity_logs, users, settings, cost_centers
+
 from app.models import Project, User, Role
 from app.core.security import get_password_hash
 from sqlmodel import Session, select
@@ -27,6 +28,7 @@ app.include_router(reports.router, prefix="/reports", tags=["reports"])
 app.include_router(activity_logs.router, prefix="/activity_logs", tags=["activity_logs"])
 app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(settings.router, prefix="/settings", tags=["settings"])
+app.include_router(cost_centers.router, prefix="/cost-centers", tags=["cost_centers"])
 
 
 @app.on_event("startup")
