@@ -36,5 +36,11 @@ def start_scheduler():
     scheduler.add_job(run_timesheet_check, 'cron', day_of_week='mon', hour=10, minute=0)
     scheduler.add_job(run_approval_check, 'cron', day_of_week='mon', hour=10, minute=0)
     
+    # Backup database every day at 3 Midnight (03:00)
+    from app.services.backup_service import backup_database, clean_old_backups
+    scheduler.add_job(backup_database, 'cron', hour=3, minute=0)
+    # Cleanup old backups once a day at 03:30
+    scheduler.add_job(clean_old_backups, 'cron', hour=3, minute=30, kwargs={'days': 30})
+    
     scheduler.start()
     print("Scheduler started. Jobs scheduled for Monday 10:00 AM.")

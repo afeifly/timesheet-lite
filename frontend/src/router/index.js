@@ -44,6 +44,12 @@ const router = createRouter({
             meta: { requiresAuth: true, requiresAdmin: true }
         },
         {
+            path: '/backups',
+            name: 'backups',
+            component: () => import('../views/BackupManager.vue'),
+            meta: { requiresAuth: true, requiresAdmin: true }
+        },
+        {
             path: '/team-timesheets',
             name: 'team-timesheets',
             component: () => import('../views/TeamTimesheets.vue'),

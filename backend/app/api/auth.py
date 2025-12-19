@@ -5,7 +5,7 @@ from sqlmodel import Session, select
 from app.database import get_session
 from app.models import User, Role
 from app.api.deps import get_current_user
-from app.core.security import create_access_token, verify_password, get_password_hash
+from app.core.security import create_access_token, verify_password, get_password_hash, needs_rehash
 from app.core.config import settings
 
 router = APIRouter()
@@ -19,6 +19,13 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    if needs_rehash(user.password_hash):
+        user.password_hash = get_password_hash(form_data.password)
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.username, "role": user.role, "id": user.id}, expires_delta=access_token_expires

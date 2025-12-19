@@ -30,6 +30,9 @@ app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(settings.router, prefix="/settings", tags=["settings"])
 app.include_router(cost_centers.router, prefix="/cost-centers", tags=["cost_centers"])
 
+from app.api import backup
+app.include_router(backup.router, prefix="/backups", tags=["backups"])
+
 
 @app.on_event("startup")
 def on_startup():

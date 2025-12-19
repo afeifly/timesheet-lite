@@ -3,7 +3,10 @@
     <el-card class="help-card">
       <template #header>
         <div class="card-header">
-          <h2>Help & Documentation</h2>
+          <div class="header-content">
+            <h2>TimeSheet-lite</h2>
+            <span class="version">V1.0.0</span>
+          </div>
         </div>
       </template>
       
@@ -95,8 +98,17 @@ const activeNames = ref(['1', '2', '3', '4', '5'])
 .help-card {
   margin-bottom: 20px;
 }
-.card-header h2 {
+.header-content {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.header-content h2 {
   margin: 0;
+}
+.version {
+  font-size: 0.8em;
+  color: #909399;
 }
 .help-content h3 {
   margin-top: 0;

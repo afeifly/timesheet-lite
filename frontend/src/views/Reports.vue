@@ -89,10 +89,10 @@
             </div>
             <!-- Custom project: four lines with borders -->
             <div v-else class="project-header custom-project">
-              <div class="project-header-line with-border">{{ project.full_name || project.name }}</div>
-              <div class="project-header-line with-border">{{ project.chinese_name || ' ' }}</div>
-              <div class="project-header-line with-border">{{ project.custom_id || project.id }}</div>
-              <div class="project-header-line time-range">
+              <div class="project-header-line with-border ph-name">{{ project.full_name || project.name }}</div>
+              <div class="project-header-line with-border ph-cn">{{ project.chinese_name || ' ' }}</div>
+              <div class="project-header-line with-border ph-id">{{ project.custom_id || project.id }}</div>
+              <div class="project-header-line time-range ph-date">
                 {{ formatDateRange(project.start_date, project.plan_closed_date) }}
               </div>
             </div>
@@ -496,12 +496,33 @@ onMounted(() => {
 }
 .project-header-line {
   margin: 0;
-  padding: 3px 10px;
+  padding: 3px 5px; /* Reduced side padding slightly */
   word-wrap: break-word;
   overflow-wrap: break-word;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.2;
 }
 .project-header-line.with-border {
   border-bottom: 1px solid #DCDFE6;
+}
+.ph-name {
+  height: 40px; /* Force fixed height for alignment */
+  overflow: hidden;
+}
+.ph-cn {
+  height: 48px;
+  overflow: hidden;
+}
+.ph-id {
+  height: 24px;
+  overflow: hidden;
+}
+.ph-date {
+  height: 36px;
+  overflow: hidden;
 }
 .project-header-line.time-range {
   font-size: 11px;
