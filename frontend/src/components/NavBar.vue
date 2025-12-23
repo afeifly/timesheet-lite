@@ -50,6 +50,7 @@
       <el-menu-item @click="showPasswordDialog = true">Change Password</el-menu-item>
       <template v-if="authStore.isAdmin">
         <el-menu-item index="/email-settings">Email Settings</el-menu-item>
+        <el-menu-item index="/workdays">Work Day Management</el-menu-item>
         <el-menu-item index="/backups">Backup Manager</el-menu-item>
       </template>
       <el-menu-item @click="handleLogout">Logout</el-menu-item>

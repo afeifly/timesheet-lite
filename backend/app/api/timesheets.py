@@ -3,7 +3,7 @@ from datetime import date, timedelta, datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select, func
 from app.database import get_session
-from app.models import Timesheet, User, ActivityLog, Role, Project
+from app.models import Timesheet, User, ActivityLog, Role, Project, WorkDay, WorkDayType
 from app.api.deps import get_current_user
 
 router = APIRouter()
@@ -77,13 +77,34 @@ def create_timesheet(
         .where(Timesheet.date >= start_of_week)
         .where(Timesheet.date <= end_of_week)
     ).one() or 0
+
+    # Check for OFF day
+    current_workday = session.get(WorkDay, timesheet.date)
+    if current_workday and current_workday.day_type == WorkDayType.OFF:
+        raise HTTPException(status_code=400, detail="Cannot log work on an off day")
     
+    # Calculate Dynamic Weekly Limit
+    limit = 40.0
+    week_exceptions = session.exec(
+        select(WorkDay)
+        .where(WorkDay.date >= start_of_week)
+        .where(WorkDay.date <= end_of_week)
+    ).all()
+
+    for exception in week_exceptions:
+        # Only reduce limit if the off day is a weekday (Mon-Fri)
+        if exception.date.weekday() < 5:
+            if exception.day_type == WorkDayType.OFF:
+                limit -= 8.0
+            elif exception.day_type == WorkDayType.HALF_OFF:
+                limit -= 4.0
+            
     # If updating existing entry, subtract its current hours from weekly total
     if existing:
         weekly_hours -= existing.hours
     
-    if weekly_hours + timesheet.hours > 40:
-        raise HTTPException(status_code=400, detail=f"Weekly limit exceeded. Current: {weekly_hours}, Requested: {timesheet.hours}")
+    if weekly_hours + timesheet.hours > limit:
+        raise HTTPException(status_code=400, detail=f"Weekly limit exceeded. Limit: {limit}h, Current: {weekly_hours}h, Requested: {timesheet.hours}h")
 
     # 3. Pre-planning check
     # "Edit past weeks only if admin permissions allow" -> Now "past two weeks can be modify again"

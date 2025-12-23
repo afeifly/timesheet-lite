@@ -24,6 +24,11 @@
                 <div :class="['header-total', { 'warning': getDailyTotal(index) !== 8 }]">
                   {{ getDailyTotal(index) }}h
                 </div>
+                <div v-if="getDayType(day.date) !== 'work'" class="day-status-badge">
+                  <el-tag :type="getDayType(day.date) === 'off' ? 'danger' : 'warning'" size="small">
+                    {{ getDayType(day.date) === 'off' ? 'OFF' : 'HALF' }}
+                  </el-tag>
+                </div>
                 <el-tag v-if="isDayVerified(index)" type="success" size="small" class="verify-badge">Approved</el-tag>
               </div>
               </div>
@@ -67,12 +72,12 @@
             <!-- Daily Totals section removed -->
             
             <div class="weekly-total">
-              <strong>Weekly Total: {{ getWeeklyTotal() }} / 40h</strong>
+              <strong>Weekly Total: {{ getWeeklyTotal() }} / {{ weeklyLimit }}h</strong>
               <el-progress 
-                :percentage="Math.min((getWeeklyTotal() / 40) * 100, 100)" 
-                :status="getWeeklyTotal() > 40 ? 'exception' : (getWeeklyTotal() === 40 ? 'success' : '')"
+                :percentage="weeklyLimit > 0 ? Math.min((getWeeklyTotal() / weeklyLimit) * 100, 100) : (getWeeklyTotal() > 0 ? 100 : 0)" 
+                :status="getWeeklyTotal() > weeklyLimit ? 'exception' : (getWeeklyTotal() === weeklyLimit ? 'success' : '')"
               />
-              <el-alert v-if="getWeeklyTotal() > 40" title="Weekly limit exceeded!" type="error" show-icon :closable="false" class="mt-2" />
+              <el-alert v-if="getWeeklyTotal() > weeklyLimit" title="Weekly limit exceeded!" type="error" show-icon :closable="false" class="mt-2" />
             </div>
           </div>
 
@@ -110,6 +115,7 @@ watch(() => route.query.date, (newDate) => {
 }, { immediate: true })
 const timesheets = ref([])
 const projectRows = ref([])
+const workDayMap = ref({})
 
 const weekDays = computed(() => {
   const startOfWeek = currentDate.value.startOf('week').add(1, 'day') // Monday
@@ -142,9 +148,22 @@ const changeWeek = (offset) => {
   fetchData()
 }
 
+const getDayType = (date) => {
+  return workDayMap.value[date] || 'work'
+}
+
+const weeklyLimit = computed(() => {
+  return weekDays.value.reduce((acc, day) => {
+    const type = getDayType(day.date)
+    if (type === 'off') return acc - 8
+    if (type === 'half_off') return acc - 4
+    return acc
+  }, 40)
+})
+
 const fetchData = async () => {
   try {
-    const [pRes, tRes, userProjectsRes] = await Promise.all([
+    const [pRes, tRes, userProjectsRes, wRes] = await Promise.all([
       api.get('/projects/'), // Get all projects (to find defaults)
       api.get('/timesheets/', {
         params: {
@@ -153,9 +172,22 @@ const fetchData = async () => {
           user_id: authStore.user.id // Explicitly pass user_id
         }
       }),
-      api.get(`/users/${authStore.user.id}/projects`) // Get assigned projects
+      api.get(`/users/${authStore.user.id}/projects`), // Get assigned projects
+      api.get('/workdays/', {
+        params: {
+          start_date: weekDays.value[0].date,
+          end_date: weekDays.value[4].date
+        }
+      })
     ])
     
+    // Process WorkDays
+    const map = {}
+    wRes.data.forEach(item => {
+      map[item.date] = item.day_type
+    })
+    workDayMap.value = map
+
     const allProjects = pRes.data
     const assignedProjects = userProjectsRes.data
     const assignedIds = new Set(assignedProjects.map(p => p.id))
@@ -200,8 +232,15 @@ const getWeeklyTotal = () => {
 const getMaxHours = (dayIndex, currentHours) => {
   const dailyTotal = getDailyTotal(dayIndex)
   const otherProjectsTotal = dailyTotal - currentHours
-  const remainingHours = 8 - otherProjectsTotal
-  return Math.max(0, Math.min(remainingHours, 8))
+  const date = weekDays.value[dayIndex].date
+  const type = getDayType(date)
+  
+  let dayLimit = 8
+  if (type === 'off') dayLimit = 0
+  if (type === 'half_off') dayLimit = 4
+  
+  const remainingHours = dayLimit - otherProjectsTotal
+  return Math.max(0, Math.min(remainingHours, dayLimit))
 }
 
 const getSliderWidth = (dayIndex, currentHours) => {
@@ -427,5 +466,8 @@ onMounted(fetchData)
 .actions {
   margin-top: 30px;
   text-align: right;
+}
+.day-status-badge {
+  margin-top: 4px;
 }
 </style>

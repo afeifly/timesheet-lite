@@ -1,5 +1,5 @@
 from typing import Optional, List
-from datetime import datetime, date, timezone
+from datetime import datetime, date as DtDate, timezone
 from sqlmodel import Field, SQLModel, Relationship
 from enum import Enum
 
@@ -12,6 +12,16 @@ class ProjectStatus(str, Enum):
     RUN = "RUN"
     CLOSE = "CLOSE"
     NOT_START = "NOT START"
+
+class WorkDayType(str, Enum):
+    WORK = "work"
+    OFF = "off"
+    HALF_OFF = "half_off"
+
+class WorkDay(SQLModel, table=True):
+    date: DtDate = Field(primary_key=True)
+    day_type: WorkDayType = Field(default=WorkDayType.WORK)
+    remark: Optional[str] = None
 
 class SMTPSettings(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -34,8 +44,8 @@ class User(SQLModel, table=True):
     full_name: Optional[str] = None
     cost_center: Optional[str] = None
     remark: Optional[str] = None
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
+    start_date: Optional[DtDate] = None
+    end_date: Optional[DtDate] = None
     password_hash: str
     role: Role = Field(default=Role.EMPLOYEE)
     is_deleted: bool = Field(default=False)
@@ -55,9 +65,9 @@ class Project(SQLModel, table=True):
     chinese_name: Optional[str] = None
     custom_id: Optional[str] = None
     status: ProjectStatus = Field(default=ProjectStatus.NOT_START)
-    start_date: Optional[date] = None
-    plan_closed_date: Optional[date] = None
-    actual_closed_date: Optional[date] = None
+    start_date: Optional[DtDate] = None
+    plan_closed_date: Optional[DtDate] = None
+    actual_closed_date: Optional[DtDate] = None
     others: Optional[str] = None
     remark: Optional[str] = None
     description: Optional[str] = None
@@ -71,7 +81,7 @@ class Timesheet(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id")
     project_id: int = Field(foreign_key="project.id")
-    date: date
+    date: DtDate
     hours: float
     verify: bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
