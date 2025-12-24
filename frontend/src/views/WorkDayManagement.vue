@@ -3,7 +3,7 @@
     <h2>Work Day Management</h2>
     <div class="header-actions">
       <el-alert
-        title="White: Work Day | Red: Off Day | Orange: Half Day. Click to toggle."
+        title="Click on a day to toggle its status (Off Day / Half Day)."
         type="info"
         show-icon
         :closable="false"
@@ -18,15 +18,17 @@
           <el-button size="small" @click="changeMonth(1)">Next Month</el-button>
         </el-button-group>
       </template>
-      <template #dateCell="{ data }">
+      <template #date-cell="{ data }">
         <div 
           class="custom-date-cell"
           :class="getDayClass(data.day)"
           @click.stop="toggleDayStatus(data.day)"
         >
-           <div class="date-header">
-             <div class="date-number">{{ data.day.split('-').slice(2).join('') }}</div>
-             <div class="status-badge" v-if="getStatusLabel(data.day)">{{ getStatusLabel(data.day) }}</div>
+           <div class="cell-content">
+             <div class="date-header">
+               <div class="date-number">{{ data.day.split('-').slice(2).join('') }}</div>
+               <div class="status-badge" v-if="getStatusLabel(data.day)">{{ getStatusLabel(data.day) }}</div>
+             </div>
            </div>
         </div>
       </template>
@@ -97,21 +99,28 @@ const getStatusLabel = (dateStr) => {
 const toggleDayStatus = async (dateStr) => {
   const currentType = workDays.value[dateStr] || 'work'
   let nextType = 'work'
-  if (currentType === 'work') nextType = 'off'
-  else if (currentType === 'off') nextType = 'half_off'
-  else if (currentType === 'half_off') nextType = 'work'
+  if (currentType === 'work') {
+    nextType = 'off'
+  } else if (currentType === 'off') {
+    nextType = 'half_off'
+  } else if (currentType === 'half_off') {
+    nextType = 'work'
+  }
 
   try {
     await api.post('/workdays/', {
       date: dateStr,
       day_type: nextType
     })
-    // Update local state immediately with new object reference for reactivity
-    workDays.value = { ...workDays.value, [dateStr]: nextType }
+    workDays.value = {
+      ...workDays.value,
+      [dateStr]: nextType
+    }
     ElMessage.success(`Set ${dateStr} to ${nextType.toUpperCase()}`)
   } catch (error) {
-     const msg = error.response?.data?.detail || 'Failed to update status'
-     ElMessage.error(msg)
+    console.error('Failed to update workday:', error)
+    const msg = error.response?.data?.detail || 'Failed to update workday status'
+    ElMessage.error(msg)
   }
 }
 
@@ -135,63 +144,95 @@ onMounted(() => {
 }
 .custom-date-cell {
   height: 100%;
-  padding: 8px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
   cursor: pointer;
-  position: relative;
-  transition: background-color 0.2s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 8px;
+}
+.cell-content {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.is-off {
+  background-color: #fef0f0 !important; /* Soft Red */
+}
+.is-half {
+  background-color: #fdf6ec !important; /* Soft Orange */
+}
+.is-work {
+  background-color: transparent;
 }
 .custom-date-cell:hover {
-  background-color: #f0f9eb; /* Light green hover for better feedback */
+  background-color: #f5f7fa !important;
 }
-
-/* Status Colors */
-.is-off {
-  background-color: #fef0f0 !important; /* Light Red */
-  color: #f56c6c;
+.is-off.custom-date-cell:hover {
+  background-color: #fee2e2 !important;
 }
-.custom-date-cell.is-off:hover {
-  background-color: #fab6b6 !important; 
-}
-
-.is-half {
-  background-color: #faecd8 !important; /* Light Orange */
-  color: #e6a23c;
-}
-.custom-date-cell.is-half:hover {
-  background-color: #f5dab1 !important; 
-}
-
-.is-work {
-  background-color: #ffffff;
-}
-.custom-date-cell.is-work:hover {
-  background-color: #f0f9eb;
+.is-half.custom-date-cell:hover {
+  background-color: #faecd8 !important;
 }
 
 .date-header {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.date-number {
+  font-size: 1.1em;
+  font-weight: 500;
+  color: #606266;
 }
 .status-badge {
-  font-size: 0.8em;
-  font-weight: bold;
-  padding: 2px 4px;
-  border-radius: 4px;
-  border: 1px solid currentColor;
+  font-size: 0.75em;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.is-off .status-badge {
+  background-color: #f56c6c;
+  color: white;
+}
+.is-half .status-badge {
+  background-color: #e6a23c;
+  color: white;
 }
 
-/* Hide Weekends (Columns 6 and 7 when Mon is 1st day) */
-:deep(.el-calendar-table thead th:nth-child(6)),
+/* Hide Weekends (Columns 1 and 7 when Mon is 1st day but rendering forces Sun start) */
+:deep(.el-calendar-table thead th:nth-child(1)),
 :deep(.el-calendar-table thead th:nth-child(7)),
-:deep(.el-calendar-table__row td:nth-child(6)),
+:deep(.el-calendar-table__row td:nth-child(1)),
 :deep(.el-calendar-table__row td:nth-child(7)) {
   display: none !important;
+}
+
+/* Override default selected style */
+:deep(.el-calendar-table td.is-selected) {
+  background-color: transparent !important;
+  color: inherit !important;
+}
+:deep(.el-calendar-table td.is-selected .el-calendar-day) {
+   background-color: transparent !important;
+}
+:deep(.el-calendar-table td.is-selected:hover) {
+  background-color: transparent !important;
 }
 
 /* Remove default padding to make entire cell clickable */
 :deep(.el-calendar-day) {
   padding: 0 !important;
   height: 85px; /* Adjust height as needed */
+  display: flex;
+  flex-direction: column;
 }
 </style>

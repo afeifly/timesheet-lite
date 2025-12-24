@@ -30,8 +30,11 @@
             <div class="days-header">
               <div v-for="(day, index) in weekDays" :key="index" class="day-header-item">
                 <div>{{ day.label }}</div>
-                <div :class="['header-total', { 'warning': getDailyTotal(index) > 8 }]">
-                  {{ getDailyTotal(index) }}h
+                <div v-if="getExpectedHours(index) < 8" style="font-size: 0.8em; color: #E6A23C; font-weight: bold;">
+                  {{ getExpectedHours(index) === 0 ? '(OFF)' : '(HALF)' }}
+                </div>
+                <div :class="['header-total', { 'warning': getDailyTotal(index) > getExpectedHours(index) }]">
+                  {{ getDailyTotal(index) }}h / {{ getExpectedHours(index) }}h
                 </div>
                 <el-tag v-if="isDayVerified(index)" type="success" size="small" class="verify-badge">Approved</el-tag>
                 <el-tag v-else type="info" size="small" class="verify-badge">Unapproved</el-tag>
@@ -93,6 +96,7 @@ const currentDate = ref(dayjs())
 const projects = ref([])
 const timesheets = ref([])
 const projectRows = ref([])
+const workDays = ref({})
 const saving = ref(false)
 
 const weekDays = computed(() => {
@@ -120,9 +124,12 @@ const isCurrentWeek = computed(() => {
 })
 
 const canApprove = computed(() => {
-  // Check if every day (Mon-Fri) has exactly 8 hours
-  // weekDays contains 5 days (Mon-Fri)
-  return weekDays.value.every((_, index) => getDailyTotal(index) === 8)
+  // Check if every day (Mon-Fri) has MET its expected hours
+  return weekDays.value.every((_, index) => {
+      const total = getDailyTotal(index)
+      const expected = getExpectedHours(index)
+      return total === expected
+  })
 })
 
 const fetchEmployees = async () => {
@@ -159,7 +166,7 @@ const fetchData = async () => {
   if (!selectedEmployeeId.value) return
   
   try {
-    const [allProjectsRes, assignedProjectsRes, tRes] = await Promise.all([
+    const [allProjectsRes, assignedProjectsRes, tRes, workDaysRes] = await Promise.all([
       api.get('/projects/'), // Get all projects (to find defaults)
       api.get(`/users/${selectedEmployeeId.value}/projects`), // Get assigned projects
       api.get('/timesheets/', {
@@ -168,9 +175,22 @@ const fetchData = async () => {
           end_date: weekDays.value[4].date,
           user_id: selectedEmployeeId.value
         }
+      }),
+      api.get('/workdays/', {
+        params: {
+          start_date: weekDays.value[0].date,
+          end_date: weekDays.value[4].date
+        }
       })
     ])
     
+    // Process WorkDays
+    const wdMap = {}
+    workDaysRes.data.forEach(item => {
+      wdMap[item.date] = item.day_type
+    })
+    workDays.value = wdMap
+
     const allProjects = allProjectsRes.data
     const assignedProjects = assignedProjectsRes.data
     const assignedIds = new Set(assignedProjects.map(p => p.id))
@@ -198,6 +218,7 @@ const fetchData = async () => {
       }
     })
   } catch (error) {
+    console.error(error)
     ElMessage.error('Failed to load timesheet data')
   }
 }
@@ -216,6 +237,14 @@ const getDailyTotal = (dayIndex) => {
   return projectRows.value.reduce((sum, row) => sum + (row.hours[dayIndex] || 0), 0)
 }
 
+const getExpectedHours = (dayIndex) => {
+  const dateStr = weekDays.value[dayIndex].date
+  const type = workDays.value[dateStr] || 'work'
+  if (type === 'off') return 0
+  if (type === 'half_off') return 4
+  return 8
+}
+
 const isDayVerified = (dayIndex) => {
   const date = weekDays.value[dayIndex].date
   // Check if any entry for this date is verified (all should be same)
@@ -226,8 +255,9 @@ const isDayVerified = (dayIndex) => {
 const getMaxHours = (dayIndex, currentHours) => {
   const dailyTotal = getDailyTotal(dayIndex)
   const otherProjectsTotal = dailyTotal - currentHours
-  const remainingHours = 8 - otherProjectsTotal
-  return Math.max(0, Math.min(remainingHours, 8))
+  const max = getExpectedHours(dayIndex)
+  const remainingHours = max - otherProjectsTotal
+  return Math.max(0, Math.min(remainingHours, max))
 }
 
 const getSliderWidth = (dayIndex, currentHours) => {
@@ -245,11 +275,11 @@ const saveTimesheet = async () => {
   try {
     const promises = []
     
-    // Calculate daily totals first to determine verification status
     const dailyTotals = weekDays.value.map((day, index) => {
         return {
             date: day.date,
-            total: getDailyTotal(index)
+            total: getDailyTotal(index),
+            expected: getExpectedHours(index)
         }
     })
 
@@ -257,7 +287,10 @@ const saveTimesheet = async () => {
       row.hours.forEach((h, index) => {
         const date = weekDays.value[index].date
         const dayTotal = dailyTotals[index].total
-        const shouldVerify = dayTotal === 8
+        const expected = dailyTotals[index].expected
+        
+        // precise verification: total matches expected (e.g. 0/0, 4/4, 8/8)
+        const shouldVerify = dayTotal === expected
         
         // Always save if > 0 or if existing entry > 0 (to clear it)
         if (h >= 0) {

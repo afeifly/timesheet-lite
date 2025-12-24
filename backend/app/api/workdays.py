@@ -31,7 +31,21 @@ def update_workday(
     if current_user.role != Role.ADMIN:
         raise HTTPException(status_code=403, detail="Only Admins can manage work days")
     
+    # Ensure date is a python date object (fix for SQLite type error)
+    if isinstance(workday.date, str):
+        workday.date = date.fromisoformat(workday.date)
+
     existing = session.get(WorkDay, workday.date)
+    
+    # If explicit status is WORK, we treat it as "Normal" -> Delete the DB entry
+    if workday.day_type == WorkDayType.WORK:
+        if existing:
+            session.delete(existing)
+            session.commit()
+        # Return the object as if it exists (frontend expects it), but it's not in DB
+        return workday
+
+    # UPSERT Logic for Exceptions (OFF, HALF_OFF)
     if existing:
         existing.day_type = workday.day_type
         existing.remark = workday.remark
