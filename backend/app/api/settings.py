@@ -55,6 +55,7 @@ def update_email_settings(
         existing_settings.smtp_username = settings.smtp_username
         existing_settings.smtp_password = settings.smtp_password
         existing_settings.sender_email = settings.sender_email
+        existing_settings.checking_service_enabled = settings.checking_service_enabled
         session.add(existing_settings)
         session.commit()
         session.refresh(existing_settings)
