@@ -60,12 +60,12 @@ def create_timesheet(
     if isinstance(timesheet.date, str):
         timesheet.date = datetime.strptime(timesheet.date, "%Y-%m-%d").date()
         
-    existing = session.exec(
+    existing_entries = session.exec(
         select(Timesheet)
         .where(Timesheet.user_id == timesheet.user_id)
         .where(Timesheet.project_id == timesheet.project_id)
         .where(Timesheet.date == timesheet.date)
-    ).first()
+    ).all()
     
     # 2. Check Weekly Limit (40 hours)
     start_of_week = timesheet.date - timedelta(days=timesheet.date.weekday())
@@ -100,8 +100,10 @@ def create_timesheet(
                 limit -= 4.0
             
     # If updating existing entry, subtract its current hours from weekly total
-    if existing:
-        weekly_hours -= existing.hours
+    # If updating existing entry(ies), subtract ALL their current hours from weekly total
+    if existing_entries:
+        for entry in existing_entries:
+            weekly_hours -= entry.hours
     
     if weekly_hours + timesheet.hours > limit:
         raise HTTPException(status_code=400, detail=f"Weekly limit exceeded. Limit: {limit}h, Current: {weekly_hours}h, Requested: {timesheet.hours}h")
@@ -121,31 +123,37 @@ def create_timesheet(
     project = session.get(Project, timesheet.project_id)
     project_name = project.name if project else "Unknown"
 
-    if existing:
+    if existing_entries:
         # Update existing
         # Weekly limit already checked above
         
+        # Consolidate: Use the first one, delete others
+        target_entry = existing_entries[0]
+        duplicates = existing_entries[1:]
+        
+        for dup in duplicates:
+             session.delete(dup)
+        
         # Check verification status
-        if existing.verify:
+        if target_entry.verify:
             # Team Leader can modify verified work, but Employee cannot
             if current_user.role == Role.EMPLOYEE:
                 raise HTTPException(status_code=403, detail="Cannot modify verified timesheet")
             
-        existing.hours = timesheet.hours
+        target_entry.hours = timesheet.hours
         # Update verify status if provided (and allowed)
         if current_user.role in [Role.TEAM_LEADER, Role.ADMIN]:
-             existing.verify = timesheet.verify
+             target_entry.verify = timesheet.verify
              
-        existing.hours = timesheet.hours
-        existing.updated_at = datetime.utcnow() # Need datetime import
-        session.add(existing)
+        target_entry.updated_at = datetime.utcnow() # Need datetime import
+        session.add(target_entry)
         session.commit()
-        session.refresh(existing)
+        session.refresh(target_entry)
         
         log = ActivityLog(user_id=current_user.id, action="UPDATE_TIMESHEET", details=f"Updated {timesheet.hours}h for project '{project_name}' (ID: {timesheet.project_id}) on {timesheet.date}")
         session.add(log)
         session.commit()
-        return existing
+        return target_entry
     else:
         session.add(timesheet)
         session.commit()

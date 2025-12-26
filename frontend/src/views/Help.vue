@@ -71,9 +71,14 @@
         <section>
           <h3>System Diagrams</h3>
           <el-collapse>
-            <el-collapse-item title="Timesheet Approval Workflow" name="7">
+            <el-collapse-item title="Employee Workflow" name="7">
               <div class="diagram-container">
-                <img src="https://mermaid.ink/img/CnNlcXVlbmNlRGlhZ3JhbQogICAgcGFydGljaXBhbnQgRSBhcyBFbXBsb3llZQogICAgcGFydGljaXBhbnQgUyBhcyBTeXN0ZW0KICAgIHBhcnRpY2lwYW50IFRMIGFzIFRlYW0gTGVhZGVyCiAgICAKICAgIEUtPj5TOiBMb2cgV29yayAoOCBob3VycykKICAgIFMtLT4+RTogQ29uZmlybSBFbnRyeQogICAgUy0+PlRMOiBOb3RpZnkgUGVuZGluZyBBcHByb3ZhbCAoRW1haWwpCiAgICBUTC0+PlM6IFZlcmlmeSBUaW1lc2hlZXQKICAgIFMtLT4+RTogTm90aWZ5IEFwcHJvdmVkCg==" alt="Timesheet Workflow Diagram" />
+                <img src="/static/empoyee_workflow_s.jpeg" alt="Employee Workflow" />
+              </div>
+            </el-collapse-item>
+            <el-collapse-item title="Team Leader Workflow" name="8">
+              <div class="diagram-container">
+                <img src="/static/teamleader_workflow_s.jpeg" alt="Team Leader Workflow" />
               </div>
             </el-collapse-item>
           </el-collapse>

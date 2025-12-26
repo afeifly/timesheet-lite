@@ -82,7 +82,9 @@
           </div>
 
           <div class="actions">
-            <el-button type="primary" size="large" @click="saveTimesheet" :loading="saving">Save Changes</el-button>
+            <el-button type="primary" size="large" @click="saveTimesheet" :loading="saving" :disabled="isWeekApproved">
+              {{ isWeekApproved ? 'Week Approved' : 'Save Changes' }}
+            </el-button>
           </div>
         </el-card>
       </el-main>
@@ -256,6 +258,13 @@ const isDayVerified = (dayIndex) => {
   const entry = timesheets.value.find(t => t.date === date)
   return entry ? entry.verify : false
 }
+
+const isWeekApproved = computed(() => {
+  return weekDays.value.every((day, index) => {
+    // Week is approved if every day is either verified OR is an OFF day (no work needed)
+    return isDayVerified(index) || getDayType(day.date) === 'off'
+  })
+})
 
 const handleHoursChange = (projectId, date, hours) => {
   // Optional: Real-time validation
