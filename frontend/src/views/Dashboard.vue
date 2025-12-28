@@ -26,7 +26,7 @@
                     :type="getLogType(log.action)"
                     :size="log.action.includes('ASSIGN') ? 'large' : 'normal'"
                   >
-                    <h4>{{ formatAction(log.action) }}</h4>
+                    <h4>{{ formatAction(log.action) }} <small class="text-gray">by {{ log.username }}</small></h4>
                     <p>{{ log.details }}</p>
                   </el-timeline-item>
                 </el-timeline>
@@ -251,6 +251,11 @@ onMounted(() => {
 }
 .project-hours {
   color: #909399;
+}
+.text-gray {
+  color: #909399;
+  font-size: 0.9em;
+  margin-left: 8px;
 }
 </style>
 ```
