@@ -37,7 +37,7 @@
                   {{ getDailyTotal(index) }}h / {{ getExpectedHours(index) }}h
                 </div>
                 <el-tag v-if="isDayVerified(index)" type="success" size="small" class="verify-badge">Approved</el-tag>
-                <el-tag v-else type="info" size="small" class="verify-badge">Unapproved</el-tag>
+                <el-tag v-else-if="getExpectedHours(index) > 0" type="info" size="small" class="verify-badge">Unapproved</el-tag>
               </div>
             </div>
             <div class="total-header">Total</div>

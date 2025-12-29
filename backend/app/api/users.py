@@ -22,7 +22,11 @@ def read_users(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
-    users = session.exec(select(User).where(User.is_deleted == False)).all()
+    query = select(User).where(User.is_deleted == False)
+    if current_user.role == Role.TEAM_LEADER:
+        query = query.where(User.team_leader_id == current_user.id)
+    
+    users = session.exec(query).all()
     return users
 
 @router.post("/", response_model=User)
@@ -35,8 +39,11 @@ def create_user(
     if current_user.role != Role.ADMIN and current_user.role != Role.TEAM_LEADER:
         raise HTTPException(status_code=403, detail="Not authorized to create users")
     
-    if current_user.role == Role.TEAM_LEADER and user.role != Role.EMPLOYEE:
-        raise HTTPException(status_code=403, detail="Team Leaders can only create Employees")
+    if current_user.role == Role.TEAM_LEADER:
+        if user.role != Role.EMPLOYEE:
+            raise HTTPException(status_code=403, detail="Team Leaders can only create Employees")
+        # Force team assignment
+        user.team_leader_id = current_user.id
 
     existing_user = session.exec(select(User).where(User.username == user.username)).first()
     if existing_user:
@@ -106,10 +113,20 @@ def update_user(
         if db_user.role != Role.EMPLOYEE:
              raise HTTPException(status_code=403, detail="Team Leaders can only edit Employees")
         
+        # Check ownership
+        if db_user.team_leader_id != current_user.id:
+             raise HTTPException(status_code=403, detail="Can only edit your own team members")
+
         # Check if trying to change role
         user_data_check = user_update.dict(exclude_unset=True)
         if 'role' in user_data_check and user_data_check['role'] != Role.EMPLOYEE:
              raise HTTPException(status_code=403, detail="Team Leaders cannot change user roles")
+             
+        # Prevent changing team_leader_id (transferring out)
+        if 'team_leader_id' in user_data_check and user_data_check['team_leader_id'] != current_user.id:
+             # Allow setting to None? Or restrict strictly?
+             # For now, restrict strictly to self.
+             raise HTTPException(status_code=403, detail="Cannot transfer users out of team")
         
     user_data = user_update.dict(exclude_unset=True, exclude={'id', 'password_hash'})
     

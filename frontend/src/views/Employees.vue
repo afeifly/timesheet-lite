@@ -26,7 +26,7 @@
               link 
               type="primary" 
               @click="openEditDialog(scope.row)"
-              v-if="isAdmin || (isTeamLeader && scope.row.role === 'employee')"
+              v-if="isAdmin || (isTeamLeader && isSubordinate(scope.row))"
             >
               <el-icon><Edit /></el-icon>
             </el-button>
@@ -102,7 +102,7 @@
           </el-select>
           <el-input v-else model-value="Employee" disabled />
         </el-form-item>
-        <el-form-item label="Team Leader" v-if="['employee', 'team_leader'].includes(form.role)">
+        <el-form-item label="Team Leader" v-if="['employee', 'team_leader'].includes(form.role) && isAdmin">
           <el-select v-model="form.team_leader_id" placeholder="Select Team Leader" clearable>
             <el-option 
               v-for="tl in teamLeaders" 
@@ -111,6 +111,9 @@
               :value="tl.id" 
             />
           </el-select>
+        </el-form-item>
+        <el-form-item label="Team Leader" v-if="isTeamLeader">
+            <el-input :model-value="authStore.user?.username" disabled />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -269,7 +272,7 @@ const openCreateDialog = () => {
     end_date: null,
     password: '',
     role: isAdmin.value ? 'employee' : 'employee', // Default to employee
-    team_leader_id: null
+    team_leader_id: isTeamLeader.value ? authStore.user?.id : null
   }
   showCreateDialog.value = true
 }
