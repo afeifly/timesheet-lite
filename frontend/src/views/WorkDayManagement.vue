@@ -3,7 +3,7 @@
     <h2>Work Day Management</h2>
     <div class="header-actions">
       <el-alert
-        title="Click on a day to toggle its status (Off Day / Half Day)."
+        title="Click on a day to toggle its status (Work / Off). Weekdays default to Work, Weekends default to Off."
         type="info"
         show-icon
         :closable="false"
@@ -74,49 +74,87 @@ const loadWorkDays = async () => {
 }
 
 const getDayClass = (dateStr) => {
-  const type = workDays.value[dateStr] || 'work'
+  let type = workDays.value[dateStr]
+  if (!type) {
+      // Default logic
+      const d = dayjs(dateStr)
+      if (d.day() === 0 || d.day() === 6) type = 'off'
+      else type = 'work'
+  }
   return {
     'is-off': type === 'off',
-    'is-half': type === 'half_off',
     'is-work': type === 'work'
   }
 }
 
 const shouldShowDay = (data) => {
-  // Hide Sat (6) and Sun (0)
-  // Element plus calendar data.date is a Date object
-  const day = dayjs(data.date).day()
-  return day !== 0 && day !== 6
+  return true
 }
 
 const getStatusLabel = (dateStr) => {
-  const type = workDays.value[dateStr] || 'work'
-  if (type === 'off') return 'OFF'
-  if (type === 'half_off') return 'HALF'
+  const type = workDays.value[dateStr] // if undefined, it's default
+  const d = dayjs(dateStr)
+  const isWeekend = d.day() === 0 || d.day() === 6
+  
+  if (isWeekend) {
+      // Default OFF. Only show if overridden to WORK.
+      if (type === 'work') return 'ON'
+  } else {
+      // Default WORK. Only show if overridden to OFF.
+      if (type === 'off') return 'OFF'
+  }
   return '' 
 }
 
 const toggleDayStatus = async (dateStr) => {
-  const currentType = workDays.value[dateStr] || 'work'
-  let nextType = 'work'
-  if (currentType === 'work') {
-    nextType = 'off'
-  } else if (currentType === 'off') {
-    nextType = 'half_off'
-  } else if (currentType === 'half_off') {
-    nextType = 'work'
+  const currentType = workDays.value[dateStr] // logic: undefined means default
+  const d = dayjs(dateStr)
+  const isWeekend = d.day() === 0 || d.day() === 6
+  let nextType = ''
+  
+  if (isWeekend) {
+    // Weekend default is OFF.
+    // If currentType is undefined (default) -> User wants ON (Work)
+    // If currentType is 'work' -> User wants default (delete ON status) -> delete request? or set to off?
+    // User said "weekend day have On and just delete ON".
+    // So if it's currently WORK, we should remove the entry (reverting to default OFF).
+    // If it's currently OFF (default), we set to WORK.
+    
+    if (currentType === 'work') {
+      nextType = 'delete' // special flag to delete
+    } else {
+      nextType = 'work'
+    }
+  } else {
+    // Weekday default is WORK.
+    // If currentType is undefined (default) -> User wants OFF.
+    // If currentType is 'off' -> User wants default (delete OFF status).
+    
+    if (currentType === 'off') {
+       nextType = 'delete'
+    } else {
+       nextType = 'off'
+    }
   }
 
   try {
-    await api.post('/workdays/', {
-      date: dateStr,
-      day_type: nextType
-    })
-    workDays.value = {
-      ...workDays.value,
-      [dateStr]: nextType
+    if (nextType === 'delete') {
+         await api.delete(`/workdays/${dateStr}`)
+         const newMap = { ...workDays.value }
+         delete newMap[dateStr]
+         workDays.value = newMap
+         ElMessage.success(`Reset ${dateStr} to default`)
+    } else {
+        await api.post('/workdays/', {
+          date: dateStr,
+          day_type: nextType
+        })
+        workDays.value = {
+          ...workDays.value,
+          [dateStr]: nextType
+        }
+        ElMessage.success(`Set ${dateStr} to ${nextType.toUpperCase()}`)
     }
-    ElMessage.success(`Set ${dateStr} to ${nextType.toUpperCase()}`)
   } catch (error) {
     console.error('Failed to update workday:', error)
     const msg = error.response?.data?.detail || 'Failed to update workday status'
@@ -203,18 +241,12 @@ onMounted(() => {
   background-color: #f56c6c;
   color: white;
 }
-.is-half .status-badge {
-  background-color: #e6a23c;
+.is-work .status-badge {
+  background-color: #67C23A; /* Green for ON */
   color: white;
 }
 
-/* Hide Weekends (Columns 1 and 7 when Mon is 1st day but rendering forces Sun start) */
-:deep(.el-calendar-table thead th:nth-child(1)),
-:deep(.el-calendar-table thead th:nth-child(7)),
-:deep(.el-calendar-table__row td:nth-child(1)),
-:deep(.el-calendar-table__row td:nth-child(7)) {
-  display: none !important;
-}
+/* Hide Weekends removed */
 
 /* Override default selected style */
 :deep(.el-calendar-table td.is-selected) {

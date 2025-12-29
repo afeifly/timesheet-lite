@@ -37,12 +37,7 @@ def read_timesheets(
         
     return session.exec(query).all()
 
-@router.post("/", response_model=Timesheet)
-def create_timesheet(
-    timesheet: Timesheet,
-    session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user)
-):
+def upsert_timesheet_logic(session: Session, timesheet: Timesheet, current_user: User):
     # Validate user permissions
     if current_user.role == Role.ADMIN:
         raise HTTPException(status_code=403, detail="Admins cannot log work")
@@ -54,9 +49,7 @@ def create_timesheet(
     if current_user.role == Role.EMPLOYEE:
         timesheet.verify = False
     
-    # 1. Check if entry exists for this project/date/user -> Update instead of Create?
-    # We need to check this FIRST before calculating weekly limits
-    # Calculate start of week (Monday)
+    # Check if entry exists for this project/date/user
     if isinstance(timesheet.date, str):
         timesheet.date = datetime.strptime(timesheet.date, "%Y-%m-%d").date()
         
@@ -67,10 +60,49 @@ def create_timesheet(
         .where(Timesheet.date == timesheet.date)
     ).all()
     
-    # 2. Check Weekly Limit (40 hours)
+    # Check Weekly Limit
     start_of_week = timesheet.date - timedelta(days=timesheet.date.weekday())
     end_of_week = start_of_week + timedelta(days=6)
     
+    # Check for OFF day
+    current_workday = session.get(WorkDay, timesheet.date)
+    if current_workday and current_workday.day_type == WorkDayType.OFF:
+        raise HTTPException(status_code=400, detail="Cannot log work on an off day")
+    
+    # Calculate Dynamic Weekly Limit
+    limit = 0.0
+    
+    week_exceptions = session.exec(
+        select(WorkDay)
+        .where(WorkDay.date >= start_of_week)
+        .where(WorkDay.date <= end_of_week)
+    ).all()
+
+    # Create a map of exceptions for easy lookup
+    exceptions_map = {ex.date: ex.day_type for ex in week_exceptions}
+    
+    # Iterate through each day of the week (0=Mon, 6=Sun)
+    current_day_date = start_of_week
+    for i in range(7):
+        day_type = exceptions_map.get(current_day_date)
+        
+        # Default Logic if no exception
+        if not day_type:
+            if i < 5: # Mon-Fri
+                day_type = WorkDayType.WORK
+            else: # Sat-Sun
+                day_type = WorkDayType.OFF
+        
+        # Add hours based on type
+        if day_type == WorkDayType.WORK:
+            limit += 8.0
+        elif day_type == WorkDayType.HALF_OFF:
+            limit += 4.0
+        # OFF adds 0
+        
+        current_day_date += timedelta(days=1)
+            
+    # Calculate current weekly hours
     weekly_hours = session.exec(
         select(func.sum(Timesheet.hours))
         .where(Timesheet.user_id == timesheet.user_id)
@@ -78,29 +110,7 @@ def create_timesheet(
         .where(Timesheet.date <= end_of_week)
     ).one() or 0
 
-    # Check for OFF day
-    current_workday = session.get(WorkDay, timesheet.date)
-    if current_workday and current_workday.day_type == WorkDayType.OFF:
-        raise HTTPException(status_code=400, detail="Cannot log work on an off day")
-    
-    # Calculate Dynamic Weekly Limit
-    limit = 40.0
-    week_exceptions = session.exec(
-        select(WorkDay)
-        .where(WorkDay.date >= start_of_week)
-        .where(WorkDay.date <= end_of_week)
-    ).all()
-
-    for exception in week_exceptions:
-        # Only reduce limit if the off day is a weekday (Mon-Fri)
-        if exception.date.weekday() < 5:
-            if exception.day_type == WorkDayType.OFF:
-                limit -= 8.0
-            elif exception.day_type == WorkDayType.HALF_OFF:
-                limit -= 4.0
-            
     # If updating existing entry, subtract its current hours from weekly total
-    # If updating existing entry(ies), subtract ALL their current hours from weekly total
     if existing_entries:
         for entry in existing_entries:
             weekly_hours -= entry.hours
@@ -108,12 +118,10 @@ def create_timesheet(
     if weekly_hours + timesheet.hours > limit:
         raise HTTPException(status_code=400, detail=f"Weekly limit exceeded. Limit: {limit}h, Current: {weekly_hours}h, Requested: {timesheet.hours}h")
 
-    # 3. Pre-planning check
-    # "Edit past weeks only if admin permissions allow" -> Now "past two weeks can be modify again"
+    # Pre-planning check
     today = date.today()
     start_of_current_week = today - timedelta(days=today.weekday())
     # Allow editing for current week AND previous 2 weeks.
-    # So cutoff is start_of_current_week - 14 days.
     cutoff_date = start_of_current_week - timedelta(weeks=2)
     
     if timesheet.date < cutoff_date and current_user.role not in [Role.ADMIN, Role.TEAM_LEADER]:
@@ -125,9 +133,6 @@ def create_timesheet(
 
     if existing_entries:
         # Update existing
-        # Weekly limit already checked above
-        
-        # Consolidate: Use the first one, delete others
         target_entry = existing_entries[0]
         duplicates = existing_entries[1:]
         
@@ -136,7 +141,6 @@ def create_timesheet(
         
         # Check verification status
         if target_entry.verify:
-            # Team Leader can modify verified work, but Employee cannot
             if current_user.role == Role.EMPLOYEE:
                 raise HTTPException(status_code=403, detail="Cannot modify verified timesheet")
             
@@ -145,24 +149,53 @@ def create_timesheet(
         if current_user.role in [Role.TEAM_LEADER, Role.ADMIN]:
              target_entry.verify = timesheet.verify
              
-        target_entry.updated_at = datetime.utcnow() # Need datetime import
+        target_entry.updated_at = datetime.utcnow()
         session.add(target_entry)
-        session.commit()
         session.refresh(target_entry)
         
         log = ActivityLog(user_id=current_user.id, action="UPDATE_TIMESHEET", details=f"Updated {timesheet.hours}h for project '{project_name}' (ID: {timesheet.project_id}) on {timesheet.date}")
         session.add(log)
-        session.commit()
         return target_entry
     else:
         session.add(timesheet)
-        session.commit()
+        # We need to flush here to ensure the ID is generated if we need it,
+        # and more importantly, so subsequent queries in this transaction see it.
+        session.flush() 
         session.refresh(timesheet)
         
         log = ActivityLog(user_id=current_user.id, action="CREATE_TIMESHEET", details=f"Logged {timesheet.hours}h for project '{project_name}' (ID: {timesheet.project_id}) on {timesheet.date}")
         session.add(log)
-        session.commit()
         return timesheet
+
+@router.post("/", response_model=Timesheet)
+def create_timesheet(
+    timesheet: Timesheet,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    result = upsert_timesheet_logic(session, timesheet, current_user)
+    session.commit()
+    session.refresh(result)
+    return result
+
+@router.post("/batch", response_model=List[Timesheet])
+def batch_create_timesheet(
+    timesheets: List[Timesheet],
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    results = []
+    # Process each timesheet
+    for ts in timesheets:
+        # upsert_timesheet_logic performs flush(), so subsequent iterations see updated weekly totals
+        res = upsert_timesheet_logic(session, ts, current_user)
+        results.append(res)
+    
+    session.commit()
+    # Refresh all results to ensure they are bound to the session and have latest data
+    for res in results:
+        session.refresh(res)
+    return results
 
 # Need to import datetime for updated_at
 from datetime import datetime

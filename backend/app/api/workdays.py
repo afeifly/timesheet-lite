@@ -38,14 +38,7 @@ def update_workday(
     existing = session.get(WorkDay, workday.date)
     
     # If explicit status is WORK, we treat it as "Normal" -> Delete the DB entry
-    if workday.day_type == WorkDayType.WORK:
-        if existing:
-            session.delete(existing)
-            session.commit()
-        # Return the object as if it exists (frontend expects it), but it's not in DB
-        return workday
-
-    # UPSERT Logic for Exceptions (OFF, HALF_OFF)
+    # UPSERT Logic
     if existing:
         existing.day_type = workday.day_type
         existing.remark = workday.remark
@@ -58,3 +51,26 @@ def update_workday(
         session.commit()
         session.refresh(workday)
         return workday
+
+@router.delete("/{date_str}")
+def delete_workday(
+    date_str: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != Role.ADMIN:
+        raise HTTPException(status_code=403, detail="Only Admins can manage work days")
+    
+    try:
+        d = date.fromisoformat(date_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format")
+
+    existing = session.get(WorkDay, d)
+    if existing:
+        session.delete(existing)
+        session.commit()
+    return {"ok": True}
+
+    # UPSERT Logic for Exceptions (OFF, HALF_OFF)
+

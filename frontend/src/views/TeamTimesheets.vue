@@ -33,7 +33,7 @@
                 <div v-if="getExpectedHours(index) < 8" style="font-size: 0.8em; color: #E6A23C; font-weight: bold;">
                   {{ getExpectedHours(index) === 0 ? '(OFF)' : '(HALF)' }}
                 </div>
-                <div :class="['header-total', { 'warning': getDailyTotal(index) > getExpectedHours(index) }]">
+                <div :class="['header-total', { 'warning': getDailyTotal(index) > getExpectedHours(index) }]" v-if="getExpectedHours(index) > 0">
                   {{ getDailyTotal(index) }}h / {{ getExpectedHours(index) }}h
                 </div>
                 <el-tag v-if="isDayVerified(index)" type="success" size="small" class="verify-badge">Approved</el-tag>
@@ -50,24 +50,24 @@
               </div>
               <div class="days-container">
                 <div v-for="(day, index) in weekDays" :key="index" class="day-column">
-                  <div class="slider-wrapper" :style="{ width: getSliderWidth(index, project.hours[index]) }">
+                  <div class="slider-wrapper" v-if="getExpectedHours(index) > 0" :style="{ width: getSliderWidth(index, project.hours[index]) }">
                     <el-slider 
                       v-model="project.hours[index]" 
                       :min="0" 
                       :max="getMaxHours(index, project.hours[index])" 
-                      :step="0.5" 
+                      :step="1" 
                       show-stops
                       @change="handleHoursChange(project.id, day.date, project.hours[index])"
                     />
                   </div>
-                  <div class="hours-display">{{ project.hours[index] }}h</div>
+                  <div class="hours-display" v-if="getExpectedHours(index) > 0">{{ project.hours[index] }}h</div>
                 </div>
               </div>
               <div class="project-total">
-                {{ project.hours.reduce((a, b) => a + (b || 0), 0) }}h
+                {{ getProjectTotal(project) }}h
               </div>
             </div>
-            <el-divider />
+            <!-- Removed el-divider -->
           </div>
 
           <div class="actions">
@@ -100,8 +100,8 @@ const workDays = ref({})
 const saving = ref(false)
 
 const weekDays = computed(() => {
-  const startOfWeek = currentDate.value.startOf('week').add(1, 'day')
-  return Array.from({ length: 5 }, (_, i) => {
+  const startOfWeek = currentDate.value.startOf('week')
+  return Array.from({ length: 7 }, (_, i) => {
     const d = startOfWeek.add(i, 'day')
     return {
       label: d.format('ddd D/M'),
@@ -112,14 +112,14 @@ const weekDays = computed(() => {
 
 const weekRange = computed(() => {
   const start = weekDays.value[0].date
-  const end = weekDays.value[4].date
+  const end = weekDays.value[6].date
   return `${start} - ${end}`
 })
 
 const isCurrentWeek = computed(() => {
   const today = dayjs()
-  const startOfCurrentWeek = today.startOf('week').add(1, 'day')
-  const startOfDisplayedWeek = currentDate.value.startOf('week').add(1, 'day')
+  const startOfCurrentWeek = today.startOf('week')
+  const startOfDisplayedWeek = currentDate.value.startOf('week')
   return startOfDisplayedWeek.isSame(startOfCurrentWeek, 'day') || startOfDisplayedWeek.isAfter(startOfCurrentWeek)
 })
 
@@ -172,14 +172,14 @@ const fetchData = async () => {
       api.get('/timesheets/', {
         params: {
           start_date: weekDays.value[0].date,
-          end_date: weekDays.value[4].date,
+          end_date: weekDays.value[6].date,
           user_id: selectedEmployeeId.value
         }
       }),
       api.get('/workdays/', {
         params: {
           start_date: weekDays.value[0].date,
-          end_date: weekDays.value[4].date
+          end_date: weekDays.value[6].date
         }
       })
     ])
@@ -234,12 +234,50 @@ const changeWeek = (offset) => {
 }
 
 const getDailyTotal = (dayIndex) => {
+  const dateStr = weekDays.value[dayIndex].date
+  if (getExpectedHours(dayIndex) === 0 && !workDays.value[dateStr]) { // simplistic check? Better to check type
+     // actually getExpectedHours returns 0 for OFF days
+  }
+  // Better use getExpectedHours check or direct type check
+  const type = workDays.value[dateStr] || 'work'
+  // logic from getExpectedHours:
+  const d = dayjs(dateStr)
+  const isWeekend = d.day() === 0 || d.day() === 6
+  let isOff = false
+  if (isWeekend && !workDays.value[dateStr]) isOff = true
+  if (type === 'off') isOff = true
+  
+  if (isOff) return 0
+  
   return projectRows.value.reduce((sum, row) => sum + (row.hours[dayIndex] || 0), 0)
+}
+
+const getProjectTotal = (project) => {
+  return project.hours.reduce((sum, h, index) => {
+    // Check if day is OFF using same logic
+    const dateStr = weekDays.value[index].date
+    const type = workDays.value[dateStr] || 'work'
+    const d = dayjs(dateStr)
+    const isWeekend = d.day() === 0 || d.day() === 6
+    let isOff = false
+    if (isWeekend && !workDays.value[dateStr]) isOff = true
+    if (type === 'off') isOff = true
+    
+    if (isOff) return sum
+    return sum + (h || 0)
+  }, 0)
 }
 
 const getExpectedHours = (dayIndex) => {
   const dateStr = weekDays.value[dayIndex].date
   const type = workDays.value[dateStr] || 'work'
+  
+  // Default Sat/Sun to 0 if not specified
+  const d = dayjs(dateStr)
+  if (d.day() === 0 || d.day() === 6) {
+      if (!workDays.value[dateStr]) return 0
+  }
+
   if (type === 'off') return 0
   if (type === 'half_off') return 4
   return 8
@@ -283,6 +321,8 @@ const saveTimesheet = async () => {
         }
     })
 
+    const batchEntries = []
+
     for (const row of projectRows.value) {
       row.hours.forEach((h, index) => {
         const date = weekDays.value[index].date
@@ -295,18 +335,21 @@ const saveTimesheet = async () => {
         // Always save if > 0 or if existing entry > 0 (to clear it)
         if (h >= 0) {
            if (h > 0 || timesheets.value.some(t => t.project_id === row.id && t.date === date && t.hours > 0)) {
-               promises.push(api.post('/timesheets/', {
+               batchEntries.push({
                  user_id: selectedEmployeeId.value,
                  project_id: row.id,
                  date: date,
                  hours: h,
                  verify: shouldVerify
-               }))
+               })
            }
         }
       })
     }
-    await Promise.all(promises)
+    
+    if (batchEntries.length > 0) {
+        await api.post('/timesheets/batch', batchEntries)
+    }
     ElMessage.success('Timesheet saved and approved where applicable')
     fetchData()
     
@@ -359,12 +402,12 @@ onMounted(() => {
 .days-header {
   display: flex;
   flex: 1;
-  gap: 20px;
+  gap: 5px;
 }
 .day-header-item {
   flex: 1;
   text-align: center;
-  min-width: 120px;
+  min-width: 80px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -389,27 +432,34 @@ onMounted(() => {
 }
 .project-row {
   display: flex;
-  align-items: flex-start;
-  padding: 10px 0;
+  align-items: stretch;
+  padding: 0;
+  border-bottom: 1px solid #ebeef5;
 }
 .project-info {
   width: 200px;
-  padding-left: 10px;
+  padding: 10px 10px;
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
 }
 .days-container {
   display: flex;
   flex: 1;
-  gap: 20px;
+  gap: 5px;
 }
 .day-column {
   flex: 1;
-  min-width: 120px;
+  min-width: 80px;
   text-align: center;
-  padding: 0 10px;
+  padding: 10px 10px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  border-right: 1px dashed #dcdfe6;
+}
+.day-column:last-child {
+  border-right: none;
 }
 .slider-wrapper {
   width: 100%;
@@ -424,9 +474,11 @@ onMounted(() => {
   text-align: right;
   font-weight: bold;
   color: #67C23A;
-  padding-top: 10px;
-  padding-right: 10px;
+  padding: 10px 10px 10px 0;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 .actions {
   margin-top: 20px;
