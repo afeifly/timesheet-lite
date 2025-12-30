@@ -120,7 +120,7 @@ const weekDays = computed(() => {
   return Array.from({ length: 7 }, (_, i) => {
     const d = startOfWeek.add(i, 'day')
     return {
-      label: d.format('ddd D/M'),
+      label: d.format('ddd M-D'),
       date: d.format('YYYY-MM-DD')
     }
   })
