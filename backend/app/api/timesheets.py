@@ -184,18 +184,144 @@ def batch_create_timesheet(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    results = []
-    # Process each timesheet
-    for ts in timesheets:
-        # upsert_timesheet_logic performs flush(), so subsequent iterations see updated weekly totals
-        res = upsert_timesheet_logic(session, ts, current_user)
-        results.append(res)
+    if not timesheets:
+        return []
+        
+    # All timesheets must differ only by project/date, must be same user
+    # Actually payload can be whatever, but we enforce same user check if employee
+    target_user_id = timesheets[0].user_id
+    if any(t.user_id != target_user_id for t in timesheets):
+        raise HTTPException(status_code=400, detail="Batch must be for single user")
+        
+    if current_user.role == Role.EMPLOYEE and target_user_id != current_user.id:
+         raise HTTPException(status_code=403, detail="Cannot log time for others")
+
+    # Group by week to validate limits per week
+    # Assuming standard ISO week Monday start.
+    # We can handle multiple weeks by iterating.
     
+    # Map: week_start_date -> list of updates
+    updates_by_week = {}
+    
+    for ts in timesheets:
+        # Normalize date
+        if isinstance(ts.date, str):
+            ts.date = datetime.strptime(ts.date, "%Y-%m-%d").date()
+            
+        start_of_week = ts.date - timedelta(days=ts.date.weekday())
+        if start_of_week not in updates_by_week:
+            updates_by_week[start_of_week] = []
+        updates_by_week[start_of_week].append(ts)
+        
+    # Process each week
+    final_results = []
+    
+    for start_of_week, batch_updates in updates_by_week.items():
+        end_of_week = start_of_week + timedelta(days=6)
+        
+        # 1. Fetch WorkDay Exceptions for this week
+        week_exceptions = session.exec(
+            select(WorkDay)
+            .where(WorkDay.date >= start_of_week)
+            .where(WorkDay.date <= end_of_week)
+        ).all()
+        exceptions_map = {ex.date: ex.day_type for ex in week_exceptions}
+        
+        # 2. Calculate Weekly Limit for this week
+        limit = 0.0
+        current_day = start_of_week
+        for i in range(7):
+            d_type = exceptions_map.get(current_day)
+            if not d_type:
+                d_type = WorkDayType.WORK if i < 5 else WorkDayType.OFF
+            
+            if d_type == WorkDayType.WORK:
+                limit += 8.0
+            elif d_type == WorkDayType.HALF_OFF:
+                limit += 4.0
+            current_day += timedelta(days=1)
+            
+        # 3. Fetch ALL existing timesheets for this user/week
+        existing_logs = session.exec(
+            select(Timesheet)
+            .where(Timesheet.user_id == target_user_id)
+            .where(Timesheet.date >= start_of_week)
+            .where(Timesheet.date <= end_of_week)
+        ).all()
+        
+        # 4. Simulate State
+        # Map: (date, project_id) -> hours
+        # Use a dict to represent the week's state
+        # Initialize with existing
+        week_state = {} #(date, project_id) -> entry object (or dict)
+        
+        existing_entries_map = {} # To track actual DB objects for updates
+        
+        for entry in existing_logs:
+            key = (entry.date, entry.project_id)
+            week_state[key] = entry.hours
+            existing_entries_map[key] = entry
+            
+        # Apply updates
+        for update in batch_updates:
+            # Validate OFF day
+            day_type = exceptions_map.get(update.date)
+            if not day_type:
+                day_type = WorkDayType.WORK if update.date.weekday() < 5 else WorkDayType.OFF
+            
+            if day_type == WorkDayType.OFF and update.hours > 0:
+                 raise HTTPException(status_code=400, detail=f"Cannot log work on an off day ({update.date})")
+            
+            key = (update.date, update.project_id)
+            week_state[key] = update.hours # value from batch overwrites existing
+            
+        # 5. Calculate Total
+        total_hours = sum(week_state.values())
+        
+        if total_hours > limit:
+            debug_info = ", ".join([f"{k[0]}:{k[1]}={v}" for k, v in week_state.items() if v > 0])
+            raise HTTPException(status_code=400, detail=f"Weekly limit exceeded. Limit: {limit}h, Current: {total_hours}h. Breakdown: {debug_info}")
+
+        # 6. Apply to DB
+        for update in batch_updates:
+            key = (update.date, update.project_id)
+            existing = existing_entries_map.get(key)
+            
+            if existing:
+                # Update
+                # Check verifications
+                if existing.verify and current_user.role == Role.EMPLOYEE:
+                     raise HTTPException(status_code=403, detail="Cannot modify verified timesheet")
+                
+                existing.hours = update.hours
+                if current_user.role in [Role.TEAM_LEADER, Role.ADMIN]:
+                    existing.verify = update.verify
+                existing.updated_at = datetime.utcnow()
+                session.add(existing)
+                final_results.append(existing)
+            else:
+                # Create
+                # Auto verify logic from upsert_timesheet_logic
+                if current_user.role == Role.EMPLOYEE:
+                    update.verify = False
+                
+                session.add(update)
+                final_results.append(update)
+                # Add to existing map if we process duplicates in same batch? 
+                # Our week_state logic handles 'last one wins' for duplicates in batch.
+                # But we should be careful if batch has multiple updates to same key.
+                # The loop "for update in batch_updates" processes all.
+                # If batch has 2 updates for same key, both try to update 'existing'. 
+                # If 'existing' was null, first creates, second should update THE NEW ONE.
+                # This complex case suggests we should deduplicate batch_updates by key first.
+                
+                # Update existing_entries_map so subsequent batch items see the new object
+                existing_entries_map[key] = update
+                
     session.commit()
-    # Refresh all results to ensure they are bound to the session and have latest data
-    for res in results:
+    for res in final_results:
         session.refresh(res)
-    return results
+    return final_results
 
 # Need to import datetime for updated_at
 from datetime import datetime

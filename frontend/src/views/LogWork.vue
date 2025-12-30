@@ -109,13 +109,7 @@ const router = useRouter()
 const currentDate = ref(dayjs())
 const projects = ref([])
 
-// Watch for query param changes to update date
-watch(() => route.query.date, (newDate) => {
-  if (newDate) {
-    currentDate.value = dayjs(newDate)
-    fetchData()
-  }
-}, { immediate: true })
+
 const timesheets = ref([])
 const projectRows = ref([])
 const workDayMap = ref({})
@@ -323,6 +317,14 @@ const saveTimesheet = async () => {
     saving.value = false
   }
 }
+
+// Watch for query param changes to update date
+watch(() => route.query.date, (newDate) => {
+  if (newDate) {
+    currentDate.value = dayjs(newDate)
+    fetchData()
+  }
+}, { immediate: true })
 
 onMounted(fetchData)
 </script>

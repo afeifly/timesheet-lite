@@ -20,6 +20,7 @@
       </template>
       <template #date-cell="{ data }">
         <div 
+          v-if="data.type === 'current-month'"
           class="custom-date-cell"
           :class="getDayClass(data.day)"
           @click.stop="toggleDayStatus(data.day)"
@@ -261,10 +262,23 @@ onMounted(() => {
 }
 
 /* Remove default padding to make entire cell clickable */
+/* Remove default padding to make entire cell clickable */
 :deep(.el-calendar-day) {
   padding: 0 !important;
   height: 85px; /* Adjust height as needed */
   display: flex;
   flex-direction: column;
+}
+
+/* Hide prev/next month cells */
+:deep(.el-calendar-table td.prev),
+:deep(.el-calendar-table td.next) {
+  background-color: white !important;
+  pointer-events: none;
+}
+:deep(.el-calendar-table td.prev .el-calendar-day),
+:deep(.el-calendar-table td.next .el-calendar-day) {
+  background-color: white !important;
+  visibility: hidden; /* Hide any leftover content */
 }
 </style>
