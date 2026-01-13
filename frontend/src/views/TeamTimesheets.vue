@@ -17,10 +17,13 @@
         <el-card v-else class="timesheet-card">
           <div class="timesheet-header">
             <h3>{{ selectedEmployee?.username }}'s Timesheet</h3>
-            <div class="week-navigation">
-              <el-button @click="changeWeek(-1)">Previous Week</el-button>
-              <span class="week-range">{{ weekRange }}</span>
-              <el-button @click="changeWeek(1)" :disabled="isCurrentWeek">Next Week</el-button>
+            <div class="header-actions">
+                <div class="week-navigation">
+                  <el-button @click="changeWeek(-1)">Previous Week</el-button>
+                  <span class="week-range">{{ weekRange }}</span>
+                  <el-button @click="changeWeek(1)" :disabled="isCurrentWeek">Next Week</el-button>
+                </div>
+                <el-button type="primary" @click="saveTimesheet" :loading="saving" :disabled="!canApprove">Approve</el-button>
             </div>
           </div>
 
@@ -40,7 +43,7 @@
                 <el-tag v-else-if="getExpectedHours(index) > 0" type="info" size="small" class="verify-badge">Unapproved</el-tag>
               </div>
             </div>
-            <div class="total-header">Total</div>
+
           </div>
 
           <div v-for="project in projectRows" :key="project.id" class="project-row-wrapper">
@@ -63,16 +66,12 @@
                   <div class="hours-display" v-if="getExpectedHours(index) > 0">{{ project.hours[index] }}h</div>
                 </div>
               </div>
-              <div class="project-total">
-                {{ getProjectTotal(project) }}h
-              </div>
+
             </div>
             <!-- Removed el-divider -->
           </div>
 
-          <div class="actions">
-            <el-button type="primary" size="large" @click="saveTimesheet" :loading="saving" :disabled="!canApprove">Approve</el-button>
-          </div>
+
         </el-card>
       </el-main>
     </el-container>
@@ -380,6 +379,15 @@ onMounted(() => {
   align-items: center;
   margin-bottom: 20px;
 }
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.week-navigation {
+   display: flex;
+   align-items: center;
+}
 .week-range {
   margin: 0 20px;
   font-weight: bold;
@@ -424,12 +432,7 @@ onMounted(() => {
 .verify-badge {
   margin-top: 5px;
 }
-.total-header {
-  width: 80px;
-  text-align: right;
-  padding-right: 10px;
-  flex-shrink: 0;
-}
+
 .project-row {
   display: flex;
   align-items: stretch;
@@ -469,17 +472,7 @@ onMounted(() => {
   font-weight: bold;
   color: #409EFF;
 }
-.project-total {
-  width: 80px;
-  text-align: right;
-  font-weight: bold;
-  color: #67C23A;
-  padding: 10px 10px 10px 0;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-}
+
 .actions {
   margin-top: 20px;
   text-align: right;
