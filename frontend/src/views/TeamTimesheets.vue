@@ -15,6 +15,7 @@
         </div>
         
         <el-card v-else class="timesheet-card">
+          <div v-if="isWeekFullyApproved" class="approved-stamp">APPROVED</div>
           <div class="timesheet-header">
             <h3>{{ selectedEmployee?.username }}'s Timesheet</h3>
             <div class="header-actions">
@@ -128,6 +129,15 @@ const canApprove = computed(() => {
       const total = getDailyTotal(index)
       const expected = getExpectedHours(index)
       return total === expected
+  })
+})
+
+const isWeekFullyApproved = computed(() => {
+  if (!weekDays.value.length) return false
+  return weekDays.value.every((_, index) => {
+    // Week is fully approved if every day is either OFF (0 expected) 
+    // OR is verified (approved)
+    return getExpectedHours(index) === 0 || isDayVerified(index)
   })
 })
 
@@ -372,6 +382,7 @@ onMounted(() => {
 }
 .timesheet-card {
   margin-bottom: 20px;
+  position: relative; /* For stamp positioning */
 }
 .timesheet-header {
   display: flex;
@@ -486,5 +497,23 @@ onMounted(() => {
   max-height: 300px;
   overflow-y: auto;
   margin: 20px 0;
+}
+
+.approved-stamp {
+  position: absolute;
+  top: 60px;
+  right: 40px;
+  border: 4px solid #F56C6C;
+  color: #F56C6C;
+  font-weight: bold;
+  font-size: 2.5em;
+  padding: 10px 20px;
+  transform: rotate(-15deg);
+  opacity: 0.8;
+  pointer-events: none;
+  z-index: 100;
+  border-radius: 10px;
+  letter-spacing: 2px;
+  font-family: 'Courier New', Courier, monospace;
 }
 </style>

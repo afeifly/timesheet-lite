@@ -196,6 +196,18 @@ def batch_create_timesheet(
     if current_user.role == Role.EMPLOYEE and target_user_id != current_user.id:
          raise HTTPException(status_code=403, detail="Cannot log time for others")
 
+    # Limit Validation: 30 days
+    if current_user.role == Role.EMPLOYEE:
+        cutoff_date = date.today() - timedelta(days=30)
+        for t in timesheets:
+             # Normalize date if needed (it's done below too, but we need it now)
+             check_date = t.date
+             if isinstance(check_date, str):
+                 check_date = datetime.strptime(check_date, "%Y-%m-%d").date()
+             
+             if check_date < cutoff_date:
+                  raise HTTPException(status_code=400, detail="Cannot log work older than 30 days")
+
     # Group by week to validate limits per week
     # Assuming standard ISO week Monday start.
     # We can handle multiple weeks by iterating.
