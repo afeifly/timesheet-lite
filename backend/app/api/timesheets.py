@@ -248,6 +248,15 @@ def batch_create_timesheet(
             .where(Timesheet.date >= start_of_week)
             .where(Timesheet.date <= end_of_week)
         ).all()
+
+        # 3a. Cleanup: Remove any existing 0-hour records for this week
+        # This fixes the issue where 0-hour records prevent verification
+        zero_hour_records = [t for t in existing_logs if t.hours == 0]
+        for zr in zero_hour_records:
+             session.delete(zr)
+             # Remove from our local list so we don't process them below
+             existing_logs.remove(zr)
+        
         
         # 4. Simulate State
         # Map: (date, project_id) -> hours
@@ -293,20 +302,26 @@ def batch_create_timesheet(
                 if existing.verify and current_user.role == Role.EMPLOYEE:
                      raise HTTPException(status_code=403, detail="Cannot modify verified timesheet")
                 
-                existing.hours = update.hours
-                if current_user.role in [Role.TEAM_LEADER, Role.ADMIN]:
-                    existing.verify = update.verify
-                existing.updated_at = datetime.utcnow()
-                session.add(existing)
-                final_results.append(existing)
+                # If hours is 0, DELETE the record
+                if update.hours == 0:
+                    session.delete(existing)
+                    # We don't append to final_results as it's gone
+                else:
+                    existing.hours = update.hours
+                    if current_user.role in [Role.TEAM_LEADER, Role.ADMIN]:
+                        existing.verify = update.verify
+                    existing.updated_at = datetime.utcnow()
+                    session.add(existing)
+                    final_results.append(existing)
             else:
                 # Create
-                # Auto verify logic from upsert_timesheet_logic
-                if current_user.role == Role.EMPLOYEE:
-                    update.verify = False
-                
-                session.add(update)
-                final_results.append(update)
+                if update.hours > 0:
+                    # Auto verify logic from upsert_timesheet_logic
+                    if current_user.role == Role.EMPLOYEE:
+                        update.verify = False
+                    
+                    session.add(update)
+                    final_results.append(update)
                 # Add to existing map if we process duplicates in same batch? 
                 # Our week_state logic handles 'last one wins' for duplicates in batch.
                 # But we should be careful if batch has multiple updates to same key.
