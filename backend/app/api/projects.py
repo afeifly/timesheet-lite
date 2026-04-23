@@ -2,7 +2,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select, col
 from app.database import get_session
-from app.models import Project, User, ActivityLog, Role
+from app.models import Project, User, ActivityLog, Role, Timesheet
 from app.api.deps import get_current_user, get_current_admin_user
 
 router = APIRouter()
@@ -135,3 +135,49 @@ def update_project(
     session.commit()
     
     return db_project
+
+@router.get("/{project_id}/stats")
+def get_project_stats(
+    project_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    project = session.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+        
+    # Get all verified timesheets for this project
+    timesheets = session.exec(
+        select(Timesheet)
+        .where(Timesheet.project_id == project_id)
+        .where(Timesheet.verify == True)
+    ).all()
+    
+    # Aggregate by user
+    user_hours = {}
+    for t in timesheets:
+        if t.user_id not in user_hours:
+            user_hours[t.user_id] = 0
+        user_hours[t.user_id] += t.hours
+        
+    # Get user details
+    result = []
+    total_all = 0
+    for uid, hours in user_hours.items():
+        user = session.get(User, uid)
+        if user:
+            result.append({
+                "username": user.username,
+                "full_name": user.full_name,
+                "hours": hours
+            })
+            total_all += hours
+            
+    # Sort by hours desc
+    result.sort(key=lambda x: x["hours"], reverse=True)
+            
+    return {
+        "project_name": project.name,
+        "users": result,
+        "total_all": total_all
+    }

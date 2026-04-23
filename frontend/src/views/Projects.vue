@@ -27,20 +27,39 @@
       <el-table-column prop="actual_closed_date" label="Actual Close" width="110" />
       <el-table-column prop="description" label="Description" />
       <el-table-column prop="remark" label="Remark" />
-      <el-table-column v-if="isAdmin" label="Actions" width="150" fixed="right">
+      <el-table-column label="Actions" :width="isAdmin ? 200 : 100" fixed="right">
         <template #default="scope">
-          <el-button size="small" @click="openEditDialog(scope.row)">Edit</el-button>
-          <el-button 
-            v-if="!scope.row.is_default" 
-            type="danger" 
-            size="small" 
-            @click="handleDelete(scope.row)"
-          >
-            Delete
-          </el-button>
+          <el-button size="small" type="primary" link @click="viewStats(scope.row)">Log Stats</el-button>
+          <template v-if="isAdmin">
+            <el-button size="small" type="primary" link @click="openEditDialog(scope.row)">Edit</el-button>
+            <el-button 
+              v-if="!scope.row.is_default" 
+              type="danger" 
+              size="small" 
+              link
+              @click="handleDelete(scope.row)"
+            >
+              Delete
+            </el-button>
+          </template>
         </template>
       </el-table-column>
     </el-table>
+
+    <el-dialog v-model="showStatsDialog" :title="'Log Stats - ' + selectedProject?.name" width="500px">
+      <el-table :data="projectStats" style="width: 100%" show-summary :summary-method="getSummary">
+        <el-table-column prop="username" label="Staff">
+          <template #default="scope">
+            {{ scope.row.full_name || scope.row.username }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="hours" label="Logged Hours" width="150">
+          <template #default="scope">
+            {{ scope.row.hours }} h
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
 
     <el-dialog v-model="showCreateDialog" :title="isEditing ? 'Edit Project' : 'Create Project'" width="600px">
       <el-form :model="form" label-width="140px">
@@ -117,6 +136,46 @@ const form = ref({
   remark: '',
   description: ''
 })
+
+const showStatsDialog = ref(false)
+const selectedProject = ref(null)
+const projectStats = ref([])
+
+const viewStats = async (project) => {
+  selectedProject.value = project
+  try {
+    const response = await api.get(`/projects/${project.id}/stats`)
+    projectStats.value = response.data.users
+    showStatsDialog.value = true
+  } catch (error) {
+    ElMessage.error('Failed to fetch project stats')
+  }
+}
+
+const getSummary = (param) => {
+  const { columns, data } = param
+  const sums = []
+  columns.forEach((column, index) => {
+    if (index === 0) {
+      sums[index] = 'In all'
+      return
+    }
+    const values = data.map((item) => Number(item[column.property]))
+    if (!values.every((value) => isNaN(value))) {
+      sums[index] = `${values.reduce((prev, curr) => {
+        const value = Number(curr)
+        if (!isNaN(value)) {
+          return prev + curr
+        } else {
+          return prev
+        }
+      }, 0)} h`
+    } else {
+      sums[index] = 'N/A'
+    }
+  })
+  return sums
+}
 
 const fetchProjects = async () => {
   try {
