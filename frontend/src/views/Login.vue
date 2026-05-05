@@ -1,7 +1,10 @@
 <template>
   <div class="login-container">
     <el-card class="login-card">
-      <h2>SUTO Timesheet System</h2>
+      <div class="login-header">
+        <img src="../assets/logo.png" alt="Logo" class="login-logo" />
+        <h2>SUTO Timesheet System</h2>
+      </div>
       <el-form :model="form" label-width="80px" @keyup.enter="handleLogin">
         <el-form-item label="Username">
           <el-input v-model="form.username" />
@@ -57,5 +60,18 @@ const handleLogin = async () => {
 }
 .login-card {
   width: 400px;
+}
+.login-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+.login-logo {
+  height: 80px;
+  width: auto;
+  margin-bottom: 10px;
+}
+.login-header h2 {
+  margin: 0;
+  color: #409EFF;
 }
 </style>

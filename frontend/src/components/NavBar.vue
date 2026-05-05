@@ -6,8 +6,11 @@
     :ellipsis="false"
     router
   >
-    <el-menu-item index="/">
-      <span class="logo">SUTO Timesheet</span>
+    <el-menu-item index="/" class="logo-item">
+      <div class="logo-container">
+        <img src="../assets/logo.png" alt="Logo" class="navbar-logo" />
+        <span class="logo">SUTO Timesheet</span>
+      </div>
     </el-menu-item>
     
     <div class="flex-grow" />
@@ -46,7 +49,7 @@
 
     <el-sub-menu index="user" v-if="authStore.user">
       <template #title>{{ authStore.user.username }}</template>
-      <el-menu-item index="/help">Help</el-menu-item>
+      <el-menu-item index="/help">About & Help</el-menu-item>
       <el-menu-item @click="showPasswordDialog = true">Change Password</el-menu-item>
       <template v-if="authStore.isAdmin">
         <el-menu-item index="/email-settings">Email Settings</el-menu-item>
@@ -167,10 +170,28 @@ onUnmounted(() => {
 .flex-grow {
   flex-grow: 1;
 }
+.logo-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.navbar-logo {
+  height: 60px;
+  width: auto;
+  object-fit: contain;
+  transition: transform 0.3s ease;
+}
+.navbar-logo:hover {
+  transform: scale(1.05);
+}
 .logo {
   font-weight: bold;
-  font-size: 1.2em;
+  font-size: 1.5em;
   color: #409EFF;
+  white-space: nowrap;
+}
+:deep(.el-menu-item.logo-item) {
+  padding: 0 8px !important;
 }
 .alarm-icon {
   color: #F56C6C;

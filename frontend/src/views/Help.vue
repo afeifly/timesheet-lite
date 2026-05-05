@@ -4,13 +4,73 @@
       <template #header>
         <div class="card-header">
           <div class="header-content">
-            <h2>TimeSheet-lite</h2>
-            <span class="version">V1.0.0</span>
+            <img src="../assets/logo.png" alt="Logo" class="help-logo" />
+            <div class="title-info">
+              <h2>About & Help</h2>
+              <span class="version">V1.0.3</span>
+            </div>
           </div>
         </div>
       </template>
       
       <div class="help-content">
+        <section class="version-history">
+          <div class="section-header">
+            <h3>Version History</h3>
+            <el-button link type="primary" @click="showHistory = !showHistory">
+              {{ showHistory ? 'Collapse' : 'Expand' }}
+            </el-button>
+          </div>
+          <el-collapse-transition>
+            <el-timeline v-show="showHistory">
+            <el-timeline-item timestamp="2026-05" placement="top" type="primary">
+              <el-card>
+                <h4>V1.0.3 - Feature Expansion</h4>
+                <ul>
+                  <li>Added monthly statistics toggle to Log Stats dialog</li>
+                  <li>Enhanced project logs to show per-employee details</li>
+                </ul>
+              </el-card>
+            </el-timeline-item>
+            <el-timeline-item timestamp="2026-04" placement="top">
+              <el-card>
+                <h4>V1.0.2 - Stability & UI Polish</h4>
+                <ul>
+                  <li>Fixed approval stamp display issues</li>
+                  <li>Resolved unapprove function bugs</li>
+                  <li>General UI improvements and date format standardization</li>
+                </ul>
+              </el-card>
+            </el-timeline-item>
+            <el-timeline-item timestamp="2026-04" placement="top">
+              <el-card>
+                <h4>V1.0.1 - Functional Enhancements</h4>
+                <ul>
+                  <li>Implemented batch update for timesheets</li>
+                  <li>Enhanced team leader permissions for employee management</li>
+                  <li>Improved activity feed user identification</li>
+                  <li>Performance optimizations and system stability fixes</li>
+                </ul>
+              </el-card>
+            </el-timeline-item>
+            <el-timeline-item timestamp="2026-03" placement="top">
+              <el-card>
+                <h4>V1.0.0 - Initial Release</h4>
+                <ul>
+                  <li>Core timesheet logging system</li>
+                  <li>Project and employee management</li>
+                  <li>Email notification system</li>
+                  <li>Database backup and recovery manager</li>
+                  <li>Workday and cost center configuration</li>
+                </ul>
+              </el-card>
+            </el-timeline-item>
+          </el-timeline>
+        </el-collapse-transition>
+        </section>
+
+        <el-divider />
+
         <section>
           <h3>Introduction</h3>
           <p>Welcome to SUTO Timesheet Lite, a comprehensive tool for managing employee time, projects, and reports.</p>
@@ -92,6 +152,7 @@
 import { ref } from 'vue'
 
 const activeNames = ref(['1', '2', '3', '4', '5'])
+const showHistory = ref(false)
 </script>
 
 <style scoped>
@@ -105,6 +166,15 @@ const activeNames = ref(['1', '2', '3', '4', '5'])
 }
 .header-content {
   display: flex;
+  align-items: center;
+  gap: 15px;
+}
+.help-logo {
+  height: 48px;
+  width: auto;
+}
+.title-info {
+  display: flex;
   align-items: baseline;
   gap: 10px;
 }
@@ -116,8 +186,14 @@ const activeNames = ref(['1', '2', '3', '4', '5'])
   color: #909399;
 }
 .help-content h3 {
-  margin-top: 0;
+  margin: 0;
   color: #409EFF;
+}
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
 }
 section {
   margin-bottom: 20px;
@@ -131,5 +207,18 @@ section {
 .diagram-container img {
   max-width: 100%;
   height: auto;
+}
+.version-history ul {
+  margin: 10px 0 0 0;
+  padding-left: 20px;
+  color: #606266;
+  font-size: 0.95em;
+}
+.version-history li {
+  margin-bottom: 5px;
+}
+.version-history h4 {
+  margin: 0;
+  color: #303133;
 }
 </style>
