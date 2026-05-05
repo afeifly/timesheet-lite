@@ -1,6 +1,6 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select, col
+from sqlmodel import Session, select, col, func
 from app.database import get_session
 from app.models import Project, User, ActivityLog, Role, Timesheet
 from app.api.deps import get_current_user, get_current_admin_user
@@ -179,5 +179,35 @@ def get_project_stats(
     return {
         "project_name": project.name,
         "users": result,
+        "total_all": total_all
+    }
+
+@router.get("/{project_id}/monthly-stats")
+def get_project_monthly_stats(
+    project_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    project = session.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    rows = session.exec(
+        select(
+            func.strftime('%Y-%m', Timesheet.date).label('year_month'),
+            func.sum(Timesheet.hours).label('hours')
+        )
+        .where(Timesheet.project_id == project_id)
+        .where(Timesheet.verify == True)
+        .group_by(func.strftime('%Y-%m', Timesheet.date))
+        .order_by(func.strftime('%Y-%m', Timesheet.date).desc())
+    ).all()
+
+    result = [{"year_month": row.year_month, "hours": row.hours} for row in rows]
+    total_all = sum(row.hours for row in rows)
+
+    return {
+        "project_name": project.name,
+        "months": result,
         "total_all": total_all
     }

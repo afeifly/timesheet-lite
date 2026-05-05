@@ -46,13 +46,29 @@
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="showStatsDialog" :title="'Log Stats - ' + selectedProject?.name" width="500px">
-      <el-table :data="projectStats" style="width: 100%" show-summary :summary-method="getSummary">
+    <el-dialog v-model="showStatsDialog" :title="'Log Stats - ' + selectedProject?.name" width="550px">
+      <div style="margin-bottom: 16px">
+        <el-radio-group v-model="statsViewMode" size="small">
+          <el-radio-button value="staff">By Staff</el-radio-button>
+          <el-radio-button value="monthly">By Month</el-radio-button>
+        </el-radio-group>
+      </div>
+
+      <el-table v-if="statsViewMode === 'staff'" :data="projectStats" style="width: 100%" show-summary :summary-method="getSummary">
         <el-table-column prop="username" label="Staff">
           <template #default="scope">
             {{ scope.row.full_name || scope.row.username }}
           </template>
         </el-table-column>
+        <el-table-column prop="hours" label="Logged Hours" width="150">
+          <template #default="scope">
+            {{ scope.row.hours }} h
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-table v-else :data="projectMonthlyStats" style="width: 100%" show-summary :summary-method="getMonthlySummary">
+        <el-table-column prop="year_month" label="Month" width="150" />
         <el-table-column prop="hours" label="Logged Hours" width="150">
           <template #default="scope">
             {{ scope.row.hours }} h
@@ -112,7 +128,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import api from '../api/axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
@@ -140,9 +156,13 @@ const form = ref({
 const showStatsDialog = ref(false)
 const selectedProject = ref(null)
 const projectStats = ref([])
+const statsViewMode = ref('staff')
+const projectMonthlyStats = ref([])
 
 const viewStats = async (project) => {
   selectedProject.value = project
+  projectMonthlyStats.value = []
+  statsViewMode.value = 'staff'
   try {
     const response = await api.get(`/projects/${project.id}/stats`)
     projectStats.value = response.data.users
@@ -176,6 +196,47 @@ const getSummary = (param) => {
   })
   return sums
 }
+
+const getMonthlySummary = (param) => {
+  const { columns, data } = param
+  const sums = []
+  columns.forEach((column, index) => {
+    if (index === 0) {
+      sums[index] = 'Total'
+      return
+    }
+    const values = data.map((item) => Number(item[column.property]))
+    if (!values.every((value) => isNaN(value))) {
+      sums[index] = `${values.reduce((prev, curr) => {
+        const value = Number(curr)
+        if (!isNaN(value)) {
+          return prev + curr
+        } else {
+          return prev
+        }
+      }, 0)} h`
+    } else {
+      sums[index] = 'N/A'
+    }
+  })
+  return sums
+}
+
+const fetchMonthlyStats = async () => {
+  if (!selectedProject.value || projectMonthlyStats.value.length > 0) return
+  try {
+    const response = await api.get(`/projects/${selectedProject.value.id}/monthly-stats`)
+    projectMonthlyStats.value = response.data.months
+  } catch (error) {
+    ElMessage.error('Failed to fetch monthly stats')
+  }
+}
+
+watch(statsViewMode, (mode) => {
+  if (mode === 'monthly') {
+    fetchMonthlyStats()
+  }
+})
 
 const fetchProjects = async () => {
   try {
